@@ -49,6 +49,8 @@ router
     router.get('settings', [controllers.Settings, 'index']).as('settings.index')
     router.post('settings', [controllers.Settings, 'update']).as('settings.update')
     router.post('settings/reset', [controllers.Settings, 'reset']).as('settings.reset')
+    router.post('settings/profile', [controllers.Settings, 'updateProfile']).as('settings.profile')
+    router.post('settings/password', [controllers.Settings, 'updatePassword']).as('settings.password')
 
     // Logout Route
     router.post('logout', [controllers.Session, 'destroy']).as('session.destroy')

@@ -23,6 +23,8 @@ export type ScannedRoutes = {
     'settings.index': { paramsTuple?: []; params?: {} }
     'settings.update': { paramsTuple?: []; params?: {} }
     'settings.reset': { paramsTuple?: []; params?: {} }
+    'settings.profile': { paramsTuple?: []; params?: {} }
+    'settings.password': { paramsTuple?: []; params?: {} }
     'session.destroy': { paramsTuple?: []; params?: {} }
   }
   GET: {
@@ -52,6 +54,8 @@ export type ScannedRoutes = {
     'expenses.update.post': { paramsTuple: [ParamValue]; params: {'id': ParamValue} }
     'settings.update': { paramsTuple?: []; params?: {} }
     'settings.reset': { paramsTuple?: []; params?: {} }
+    'settings.profile': { paramsTuple?: []; params?: {} }
+    'settings.password': { paramsTuple?: []; params?: {} }
     'session.destroy': { paramsTuple?: []; params?: {} }
   }
   PUT: {

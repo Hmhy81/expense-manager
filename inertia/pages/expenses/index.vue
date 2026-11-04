@@ -30,6 +30,72 @@ const searchQuery = ref('')
 const selectedCategory = ref('All')
 const filterWithReceipt = ref('all') // 'all', 'with_receipt', 'without_receipt'
 
+// Date Range Filtering State
+const dateRangeOption = ref('all') // 'all', 'today', 'this_week', 'this_month', 'last_month', 'this_year', 'custom'
+const customStartDate = ref('')
+const customEndDate = ref('')
+
+const datePresets = [
+  { id: 'all', label: 'All Time' },
+  { id: 'today', label: 'Today' },
+  { id: 'this_week', label: 'This Week' },
+  { id: 'this_month', label: 'This Month' },
+  { id: 'last_month', label: 'Last Month' },
+  { id: 'this_year', label: 'This Year' },
+  { id: 'custom', label: 'Custom' },
+]
+
+function getStartAndEndDatesForOption(option) {
+  const now = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const toYMD = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+  if (option === 'today') {
+    const todayStr = toYMD(now)
+    return { start: todayStr, end: todayStr }
+  }
+
+  if (option === 'this_week') {
+    const current = new Date(now)
+    const day = current.getDay()
+    const diffToMon = day === 0 ? -6 : 1 - day
+    const monday = new Date(current.setDate(current.getDate() + diffToMon))
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    return { start: toYMD(monday), end: toYMD(sunday) }
+  }
+
+  if (option === 'this_month') {
+    const y = now.getFullYear()
+    const m = now.getMonth()
+    const firstDay = new Date(y, m, 1)
+    const lastDay = new Date(y, m + 1, 0)
+    return { start: toYMD(firstDay), end: toYMD(lastDay) }
+  }
+
+  if (option === 'last_month') {
+    const y = now.getFullYear()
+    const m = now.getMonth() - 1
+    const firstDay = new Date(y, m, 1)
+    const lastDay = new Date(y, m + 1, 0)
+    return { start: toYMD(firstDay), end: toYMD(lastDay) }
+  }
+
+  if (option === 'this_year') {
+    const y = now.getFullYear()
+    return { start: `${y}-01-01`, end: `${y}-12-31` }
+  }
+
+  return { start: '', end: '' }
+}
+
+const activeDateBounds = computed(() => {
+  if (dateRangeOption.value === 'custom') {
+    return { start: customStartDate.value || '', end: customEndDate.value || '' }
+  }
+  return getStartAndEndDatesForOption(dateRangeOption.value)
+})
+
 // Reset category filter if it doesn't exist in the active project
 watch(categories, (newCats) => {
   if (selectedCategory.value !== 'All' && !newCats.includes(selectedCategory.value)) {
@@ -54,7 +120,19 @@ const filteredExpenses = computed(() => {
       (filterWithReceipt.value === 'with_receipt' && item.hasReceipt) ||
       (filterWithReceipt.value === 'without_receipt' && !item.hasReceipt)
 
-    return matchesSearch && matchesCategory && matchesReceipt
+    const matchesDate = (() => {
+      if (dateRangeOption.value === 'all') return true
+      if (!item.date) return false
+
+      const itemDate = item.date.slice(0, 10)
+      const { start, end } = activeDateBounds.value
+
+      if (start && itemDate < start) return false
+      if (end && itemDate > end) return false
+      return true
+    })()
+
+    return matchesSearch && matchesCategory && matchesReceipt && matchesDate
   })
 })
 
@@ -127,12 +205,14 @@ const handleConfirmDelete = () => {
 // Receipt preview
 const openReceiptModal = (expense) => {
   selectedReceipt.value = {
+    id: expense.id,
     title: expense.title,
     vendor: expense.vendor,
     category: expense.category,
     amount: expense.amount,
     date: expense.date,
     paymentMethod: expense.paymentMethod,
+    status: expense.status,
     notes: expense.notes,
     receiptUrl: expense.receiptUrl || '',
     receiptName: expense.receiptName,
@@ -332,6 +412,66 @@ const getCategoryColor = (category) => {
         </div>
       </div>
 
+      <!-- Date Range Filter Bar -->
+      <div class="px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-slate-500 font-semibold flex items-center gap-1 mr-0.5 text-xs">
+            <Calendar :size="13" class="text-indigo-600" />
+            <span>Date Range:</span>
+          </span>
+
+          <div class="inline-flex items-center bg-white p-0.5 rounded-xl border border-slate-200/90 shadow-2xs overflow-x-auto">
+            <button
+              v-for="preset in datePresets"
+              :key="preset.id"
+              type="button"
+              @click="dateRangeOption = preset.id"
+              :class="[
+                'px-2.5 py-1 rounded-lg font-medium transition cursor-pointer text-xs whitespace-nowrap',
+                dateRangeOption === preset.id
+                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50',
+              ]"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Custom Date Range Inputs when Custom is selected -->
+        <div v-if="dateRangeOption === 'custom'" class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-1.5">
+            <label class="text-[11px] font-semibold text-slate-500">From:</label>
+            <input
+              v-model="customStartDate"
+              type="date"
+              class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+            />
+          </div>
+          <div class="flex items-center gap-1.5">
+            <label class="text-[11px] font-semibold text-slate-500">To:</label>
+            <input
+              v-model="customEndDate"
+              type="date"
+              class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+            />
+          </div>
+          <button
+            v-if="customStartDate || customEndDate"
+            type="button"
+            @click="customStartDate = ''; customEndDate = ''"
+            class="text-[11px] text-slate-500 hover:text-rose-600 font-semibold underline cursor-pointer ml-1"
+          >
+            Clear
+          </button>
+        </div>
+
+        <!-- Active Date Indicator Pill -->
+        <div v-else-if="dateRangeOption !== 'all'" class="text-[11px] text-slate-500 font-medium">
+          Showing: <strong class="text-slate-800">{{ activeDateBounds.start }}</strong> to <strong class="text-slate-800">{{ activeDateBounds.end }}</strong>
+        </div>
+      </div>
+
       <!-- Category Filter Tabs Dynamically Scoped to Active Project -->
       <div class="p-3 bg-slate-50/50 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto text-xs font-semibold overscroll-contain">
         <button
@@ -353,10 +493,10 @@ const getCategoryColor = (category) => {
       <!-- Table View -->
       <div class="overflow-x-auto">
         <table v-if="filteredExpenses.length > 0" class="w-full text-left text-sm text-slate-600">
-          <thead class="bg-slate-50/80 border-b border-slate-200/60 text-xs uppercase font-semibold text-slate-500 tracking-wider">
+          <thead class="bg-slate-50/80 border-b border-slate-200/60 text-xs font-bold text-slate-900 tracking-wider">
             <tr>
-              <th scope="col" class="py-3 px-5">Description / Item</th>
-              <th scope="col" class="py-3 px-5">Vendor / Payee</th>
+              <th scope="col" class="py-3 px-5">Item</th>
+              <th scope="col" class="py-3 px-5">Vendor</th>
               <th scope="col" class="py-3 px-5">Category</th>
               <th scope="col" class="py-3 px-5">Method</th>
               <th scope="col" class="py-3 px-5">Receipt Slip</th>

@@ -33,5 +33,7 @@ export interface ApiDefinition {
     index: typeof routes['settings.index']
     update: typeof routes['settings.update']
     reset: typeof routes['settings.reset']
+    profile: typeof routes['settings.profile']
+    password: typeof routes['settings.password']
   }
 }

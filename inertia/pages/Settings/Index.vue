@@ -1,12 +1,21 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { Head } from '@inertiajs/vue3'
+import { Head, usePage, router } from '@inertiajs/vue3'
 import AppLayout from '~/components/AppLayout.vue'
 import ConfirmModal from '~/components/ConfirmModal.vue'
 import { useActiveProject } from '~/composables/useActiveProject'
 import { useSettings, availableThemes, availableCurrencies, formatAmountWithSettings, applyThemeCSS } from '~/composables/useSettings'
-import { Palette, Coins, Sliders, Check, Globe, FolderKanban, UploadCloud, RotateCcw, Building2 } from 'lucide-vue-next'
+import { useToast } from '~/composables/useToast'
+import { Palette, Coins, Sliders, Check, Globe, FolderKanban, UploadCloud, RotateCcw, Building2, User, Lock, Shield, KeyRound, Eye, EyeOff } from 'lucide-vue-next'
 import { CheckCircle2, AlertTriangle, ShieldAlert, Info, Zap } from 'lucide-vue-next'
+
+const props = defineProps({
+  projects: { type: Array, default: () => [] },
+  activeProjectId: { type: [Number, String], default: null },
+  globalSettings: { type: Object, default: () => ({}) },
+  projectSettingsMap: { type: Object, default: () => ({}) },
+  currentUser: { type: Object, default: () => ({ fullName: '', email: '' }) },
+})
 
 const { projectsWithStats, activeProject, activeProjectId } = useActiveProject()
 const {
@@ -20,7 +29,95 @@ const {
   resetAllToDefaults,
 } = useSettings()
 
-// Active Tab: 'theme' | 'branding' | 'currency'
+const toast = useToast()
+const page = usePage()
+
+// Profile Form State
+const initialUser = computed(() => props.currentUser || page.props.user || {})
+const profileForm = ref({
+  fullName: initialUser.value.fullName || '',
+  email: initialUser.value.email || '',
+})
+const isUpdatingProfile = ref(false)
+
+watch(
+  () => props.currentUser || page.props.user,
+  (u) => {
+    if (u) {
+      if (u.fullName !== undefined) profileForm.value.fullName = u.fullName || ''
+      if (u.email !== undefined) profileForm.value.email = u.email || ''
+    }
+  },
+  { immediate: true }
+)
+
+// Password Form State
+const passwordForm = ref({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+})
+const isUpdatingPassword = ref(false)
+const showCurrentPassword = ref(false)
+const showNewPassword = ref(false)
+const showConfirmPassword = ref(false)
+
+const handleUpdateProfile = () => {
+  if (!profileForm.value.fullName.trim()) {
+    toast.error('Please enter your full name')
+    return
+  }
+  isUpdatingProfile.value = true
+  router.post(
+    '/settings/profile',
+    { fullName: profileForm.value.fullName.trim() },
+    {
+      preserveScroll: true,
+      onFinish: () => {
+        isUpdatingProfile.value = false
+      },
+    }
+  )
+}
+
+const handleUpdatePassword = () => {
+  if (!passwordForm.value.currentPassword) {
+    toast.error('Please enter your current password')
+    return
+  }
+  if (!passwordForm.value.newPassword || passwordForm.value.newPassword.length < 8) {
+    toast.error('New password must be at least 8 characters long')
+    return
+  }
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    toast.error('New password confirmation does not match')
+    return
+  }
+  isUpdatingPassword.value = true
+  router.post(
+    '/settings/password',
+    {
+      currentPassword: passwordForm.value.currentPassword,
+      newPassword: passwordForm.value.newPassword,
+      confirmPassword: passwordForm.value.confirmPassword,
+    },
+    {
+      preserveScroll: true,
+      onSuccess: () => {
+        passwordForm.value = {
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        }
+      },
+      onFinish: () => {
+        isUpdatingPassword.value = false
+      },
+    }
+  )
+}
+
+// Active Tab: 'theme' | 'branding' | 'currency' | 'profile'
 const activeTab = ref('theme')
 
 // Target Scope: 'all' | 'active' | 'selected'
@@ -163,28 +260,30 @@ const handleConfirmResetAll = () => {
   >
     <!-- TOP ACTIONS SLOT -->
     <template #actions>
-      <button
-        type="button"
-        @click="isResetModalOpen = true"
-        class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200/90 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs"
-      >
-        <RotateCcw :size="13" />
-        <span>Reset Defaults</span>
-      </button>
+      <div v-if="activeTab !== 'profile'" class="flex items-center gap-2">
+        <button
+          type="button"
+          @click="isResetModalOpen = true"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200/90 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs"
+        >
+          <RotateCcw :size="13" />
+          <span>Reset Defaults</span>
+        </button>
 
-      <button
-        type="button"
-        @click="handleSaveClick"
-        class="inline-flex items-center gap-1.5 px-4 py-1.5 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs hover:shadow"
-        :style="{ backgroundColor: previewTheme.primary }"
-      >
-        <Check :size="14" />
-        <span>Save Settings</span>
-      </button>
+        <button
+          type="button"
+          @click="handleSaveClick"
+          class="inline-flex items-center gap-1.5 px-4 py-1.5 text-white rounded-xl text-xs font-semibold transition cursor-pointer shadow-xs hover:shadow"
+          :style="{ backgroundColor: previewTheme.primary }"
+        >
+          <Check :size="14" />
+          <span>Save Settings</span>
+        </button>
+      </div>
     </template>
 
     <!-- 1. TARGET SCOPE SELECTOR & PRE-EXISTING CONFIG AWARENESS -->
-    <div class="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs space-y-4">
+    <div v-if="activeTab !== 'profile'" class="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
         <div>
           <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -434,12 +533,12 @@ const handleConfirmResetAll = () => {
     </div>
 
     <!-- 2. TABS NAVIGATION -->
-    <div class="flex items-center gap-2 border-b border-slate-200/90 pb-2 text-xs sm:text-sm font-semibold">
+    <div class="flex items-center gap-2 border-b border-slate-200/90 pb-2 text-xs sm:text-sm font-semibold overflow-x-auto">
       <button
         type="button"
         @click="activeTab = 'theme'"
         :class="[
-          'px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer',
+          'px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer shrink-0',
           activeTab === 'theme' ? 'bg-white shadow-2xs font-bold text-slate-900 border border-slate-200' : 'text-slate-500 hover:text-slate-800',
         ]"
       >
@@ -451,7 +550,7 @@ const handleConfirmResetAll = () => {
         type="button"
         @click="activeTab = 'branding'"
         :class="[
-          'px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer',
+          'px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer shrink-0',
           activeTab === 'branding' ? 'bg-white shadow-2xs font-bold text-slate-900 border border-slate-200' : 'text-slate-500 hover:text-slate-800',
         ]"
       >
@@ -463,12 +562,24 @@ const handleConfirmResetAll = () => {
         type="button"
         @click="activeTab = 'currency'"
         :class="[
-          'px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer',
+          'px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer shrink-0',
           activeTab === 'currency' ? 'bg-white shadow-2xs font-bold text-slate-900 border border-slate-200' : 'text-slate-500 hover:text-slate-800',
         ]"
       >
         <Coins :size="16" />
         <span>Currency &amp; Formats</span>
+      </button>
+
+      <button
+        type="button"
+        @click="activeTab = 'profile'"
+        :class="[
+          'px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer shrink-0',
+          activeTab === 'profile' ? 'bg-white shadow-2xs font-bold text-slate-900 border border-slate-200' : 'text-slate-500 hover:text-slate-800',
+        ]"
+      >
+        <User :size="16" class="text-indigo-600" />
+        <span>Profile &amp; Security</span>
       </button>
     </div>
 
@@ -823,8 +934,172 @@ const handleConfirmResetAll = () => {
       </div>
     </div>
 
+    <!-- 5. TAB 4: PROFILE & SECURITY -->
+    <div v-if="activeTab === 'profile'" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Profile Information Card -->
+      <div class="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-2xs space-y-5">
+        <div class="flex items-center gap-3 pb-4 border-b border-slate-100">
+          <div class="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-black text-lg shadow-2xs">
+            {{ (profileForm.fullName || 'U').charAt(0).toUpperCase() }}
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <User :size="16" class="text-indigo-600" />
+              <span>Personal Information</span>
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">
+              Update your account profile and display name
+            </p>
+          </div>
+        </div>
+
+        <form @submit.prevent="handleUpdateProfile" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">Full Name</label>
+            <div class="relative">
+              <input
+                v-model="profileForm.fullName"
+                type="text"
+                required
+                placeholder="Enter your full name"
+                class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-bold text-slate-700">Email Address</label>
+              <span class="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">Primary Account</span>
+            </div>
+            <input
+              v-model="profileForm.email"
+              type="email"
+              disabled
+              class="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200/80 rounded-xl text-xs sm:text-sm font-medium text-slate-500 cursor-not-allowed select-none"
+            />
+            <p class="text-[11px] text-slate-400 mt-1">
+              Your email is used for signing in and cannot be changed here.
+            </p>
+          </div>
+
+          <div class="pt-2 flex justify-end">
+            <button
+              type="submit"
+              :disabled="isUpdatingProfile"
+              class="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-xs font-bold rounded-xl shadow-xs hover:shadow transition cursor-pointer"
+            >
+              <Check :size="15" />
+              <span>{{ isUpdatingProfile ? 'Saving Changes...' : 'Save Profile Changes' }}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Security & Change Password Card -->
+      <div class="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 shadow-2xs space-y-5">
+        <div class="flex items-center gap-3 pb-4 border-b border-slate-100">
+          <div class="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 font-bold shadow-2xs">
+            <Shield :size="22" />
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Lock :size="16" class="text-amber-600" />
+              <span>Security &amp; Password</span>
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">
+              Change your password to keep your account safe
+            </p>
+          </div>
+        </div>
+
+        <form @submit.prevent="handleUpdatePassword" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">Current Password</label>
+            <div class="relative">
+              <input
+                v-model="passwordForm.currentPassword"
+                :type="showCurrentPassword ? 'text' : 'password'"
+                required
+                placeholder="Enter your current password"
+                class="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+              />
+              <button
+                type="button"
+                @click="showCurrentPassword = !showCurrentPassword"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <EyeOff v-if="!showCurrentPassword" :size="16" />
+                <Eye v-else :size="16" />
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">New Password</label>
+            <div class="relative">
+              <input
+                v-model="passwordForm.newPassword"
+                :type="showNewPassword ? 'text' : 'password'"
+                required
+                minlength="8"
+                placeholder="Minimum 8 characters"
+                class="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+              />
+              <button
+                type="button"
+                @click="showNewPassword = !showNewPassword"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <Eye v-if="showNewPassword" :size="16" />
+                <EyeOff v-else :size="16" />
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">Confirm New Password</label>
+            <div class="relative">
+              <input
+                v-model="passwordForm.confirmPassword"
+                :type="showConfirmPassword ? 'text' : 'password'"
+                required
+                minlength="8"
+                placeholder="Repeat new password"
+                class="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+              />
+              <button
+                type="button"
+                @click="showConfirmPassword = !showConfirmPassword"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <Eye v-if="showConfirmPassword" :size="16" />
+                <EyeOff v-else :size="16" />
+              </button>
+            </div>
+          </div>
+
+          <div class="pt-2 flex items-center justify-between">
+            <span class="text-[11px] text-slate-400 flex items-center gap-1">
+              <KeyRound :size="13" />
+              <span>Min. 8 characters</span>
+            </span>
+
+            <button
+              type="submit"
+              :disabled="isUpdatingPassword"
+              class="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white text-xs font-bold rounded-xl shadow-xs hover:shadow transition cursor-pointer"
+            >
+              <Lock :size="14" />
+              <span>{{ isUpdatingPassword ? 'Updating Password...' : 'Update Password' }}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- 6. PRE-FLIGHT REVIEW & OVERWRITE IMPACT SUMMARY -->
-    <div class="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs space-y-3">
+    <div v-if="activeTab !== 'profile'" class="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs space-y-3">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
         <div class="flex items-center gap-2">
           <ShieldAlert :size="16" class="text-slate-600" />

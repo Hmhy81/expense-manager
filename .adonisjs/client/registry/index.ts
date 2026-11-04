@@ -122,6 +122,18 @@ const routes = {
     tokens: [[0,"settings"],[0,"reset"]],
     types: placeholder as Registry['settings.reset']['types'],
   },
+  'settings.profile': {
+    methods: ["POST"],
+    pattern: '/settings/profile',
+    tokens: [[0,"settings"],[0,"profile"]],
+    types: placeholder as Registry['settings.profile']['types'],
+  },
+  'settings.password': {
+    methods: ["POST"],
+    pattern: '/settings/password',
+    tokens: [[0,"settings"],[0,"password"]],
+    types: placeholder as Registry['settings.password']['types'],
+  },
   'session.destroy': {
     methods: ["POST"],
     pattern: '/logout',

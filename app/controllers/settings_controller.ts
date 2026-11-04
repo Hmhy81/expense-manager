@@ -1,4 +1,5 @@
 import type { HttpContext } from '@adonisjs/core/http'
+import hash from '@adonisjs/core/services/hash'
 import Setting from '#models/setting'
 
 export default class SettingsController {
@@ -29,6 +30,11 @@ export default class SettingsController {
       activeProjectId,
       globalSettings,
       projectSettingsMap,
+      currentUser: {
+        id: user.id,
+        fullName: user.fullName || '',
+        email: user.email,
+      },
     })
   }
 
@@ -117,6 +123,60 @@ export default class SettingsController {
       await Setting.query().where('userId', user.id).delete()
     }
 
+    return response.redirect().back()
+  }
+
+  /**
+   * Update User Profile Information
+   */
+  async updateProfile({ auth, request, response, session }: HttpContext) {
+    const user = auth.user!
+    const fullName = request.input('fullName')?.trim()
+
+    if (!fullName) {
+      session.flash('error', 'Full name is required.')
+      return response.redirect().back()
+    }
+
+    user.fullName = fullName
+    await user.save()
+
+    session.flash('success', 'Profile information updated successfully!')
+    return response.redirect().back()
+  }
+
+  /**
+   * Change User Password
+   */
+  async updatePassword({ auth, request, response, session }: HttpContext) {
+    const user = auth.user!
+    const { currentPassword, newPassword, confirmPassword } = request.all()
+
+    if (!currentPassword) {
+      session.flash('error', 'Please enter your current password.')
+      return response.redirect().back()
+    }
+
+    if (!newPassword || newPassword.length < 8) {
+      session.flash('error', 'New password must be at least 8 characters long.')
+      return response.redirect().back()
+    }
+
+    if (newPassword !== confirmPassword) {
+      session.flash('error', 'New password confirmation does not match.')
+      return response.redirect().back()
+    }
+
+    const isCurrentValid = await hash.verify(user.password, currentPassword)
+    if (!isCurrentValid) {
+      session.flash('error', 'Your current password was incorrect.')
+      return response.redirect().back()
+    }
+
+    user.password = newPassword
+    await user.save()
+
+    session.flash('success', 'Password updated successfully!')
     return response.redirect().back()
   }
 }

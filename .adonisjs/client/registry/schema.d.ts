@@ -255,6 +255,32 @@ export interface Registry {
       rawResponse: ExtractRawResponse<Awaited<ReturnType<import('#controllers/settings_controller').default['reset']>>>
     }
   }
+  'settings.profile': {
+    methods: ["POST"]
+    pattern: '/settings/profile'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/settings_controller').default['updateProfile']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/settings_controller').default['updateProfile']>>>
+      rawResponse: ExtractRawResponse<Awaited<ReturnType<import('#controllers/settings_controller').default['updateProfile']>>>
+    }
+  }
+  'settings.password': {
+    methods: ["POST"]
+    pattern: '/settings/password'
+    types: {
+      body: {}
+      paramsTuple: []
+      params: {}
+      query: {}
+      response: ExtractResponse<Awaited<ReturnType<import('#controllers/settings_controller').default['updatePassword']>>>
+      errorResponse: ExtractErrorResponse<Awaited<ReturnType<import('#controllers/settings_controller').default['updatePassword']>>>
+      rawResponse: ExtractRawResponse<Awaited<ReturnType<import('#controllers/settings_controller').default['updatePassword']>>>
+    }
+  }
   'session.destroy': {
     methods: ["POST"]
     pattern: '/logout'
