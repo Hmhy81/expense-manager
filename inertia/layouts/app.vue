@@ -2,7 +2,7 @@
 import { House, LogOut } from 'lucide-vue-next'
 import { Form } from '@adonisjs/inertia/vue'
 import Logo from '~/components/logo.vue'
-import FlashToasts from '~/components/flash_toasts.vue'
+import AppToaster from '~/components/AppToaster.vue'
 import ThemeToggle from '~/components/theme_toggle.vue'
 import NavLink, { type NavItem } from '~/components/nav_link.vue'
 
@@ -40,5 +40,5 @@ const nav: NavItem[] = [{ label: 'Dashboard', route: 'dashboard', icon: House }]
   <div class="app-main">
     <slot />
   </div>
-  <FlashToasts />
+  <AppToaster />
 </template>

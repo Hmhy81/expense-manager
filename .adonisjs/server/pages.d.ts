@@ -9,12 +9,14 @@ type ExtractProps<T> = Omit<
 
 declare module '@adonisjs/inertia/types' {
   export interface InertiaPages {
-    'auth/login': ExtractProps<(typeof import('../../inertia/pages/auth/login.vue'))['default']>
-    'auth/signup': ExtractProps<(typeof import('../../inertia/pages/auth/signup.vue'))['default']>
-    'dashboard': ExtractProps<(typeof import('../../inertia/pages/dashboard.vue'))['default']>
+    'Auth/Login': ExtractProps<(typeof import('../../inertia/pages/Auth/Login.vue'))['default']>
+    'Auth/Signup': ExtractProps<(typeof import('../../inertia/pages/Auth/Signup.vue'))['default']>
+    'Dashboard': ExtractProps<(typeof import('../../inertia/pages/Dashboard.vue'))['default']>
     'errors/not_found': ExtractProps<(typeof import('../../inertia/pages/errors/not_found.vue'))['default']>
     'errors/server_error': ExtractProps<(typeof import('../../inertia/pages/errors/server_error.vue'))['default']>
-    'expenses/index': ExtractProps<(typeof import('../../inertia/pages/expenses/index.vue'))['default']>
-    'home': ExtractProps<(typeof import('../../inertia/pages/home.vue'))['default']>
+    'Expenses/Index': ExtractProps<(typeof import('../../inertia/pages/Expenses/Index.vue'))['default']>
+    'Home': ExtractProps<(typeof import('../../inertia/pages/Home.vue'))['default']>
+    'Projects/Index': ExtractProps<(typeof import('../../inertia/pages/Projects/Index.vue'))['default']>
+    'Settings/Index': ExtractProps<(typeof import('../../inertia/pages/Settings/Index.vue'))['default']>
   }
 }

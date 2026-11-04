@@ -12,7 +12,7 @@ import { controllers } from '#generated/controllers'
 import router from '@adonisjs/core/services/router'
 
 // 1. Landing / Home page
-router.on('/').renderInertia('home', {}).as('home')
+router.on('/').renderInertia('Home', {}).as('home')
 
 // 2. Guest Authentication routes (/signup, /login)
 router
@@ -25,92 +25,30 @@ router
   })
   .use(middleware.guest())
 
-// 3. Authenticated Application routes (/dashboard, /expenses, /logout)
+// 3. Authenticated Application routes (/dashboard, /projects, /expenses, /settings, /logout)
 router
   .group(() => {
     // Dashboard Route
-    router
-      .on('dashboard')
-      .renderInertia('dashboard', {
-        stats: {
-          totalExpense: 'Rs. 45,200',
-          thisMonth: 'Rs. 12,500',
-          categoriesCount: 5,
-          pendingCount: 2,
-        },
-      })
-      .as('dashboard')
+    router.get('dashboard', [controllers.Dashboard, 'index']).as('dashboard')
 
-    // Expenses Listing Route
-    router
-      .on('expenses')
-      .renderInertia('expenses/index', {
-        expenses: [
-          {
-            id: 1,
-            title: 'Office Electricity Bill',
-            category: 'Utilities',
-            amount: 8400,
-            date: '2026-11-01',
-            paymentMethod: 'Bank Transfer',
-            status: 'Paid',
-          },
-          {
-            id: 2,
-            title: 'Team Lunch & Coffee',
-            category: 'Food & Dining',
-            amount: 3200,
-            date: '2026-10-30',
-            paymentMethod: 'Cash',
-            status: 'Paid',
-          },
-          {
-            id: 3,
-            title: 'Figma Annual Subscription',
-            category: 'Software & Tools',
-            amount: 14500,
-            date: '2026-10-28',
-            paymentMethod: 'Credit Card',
-            status: 'Paid',
-          },
-          {
-            id: 4,
-            title: 'High-speed Fiber Internet',
-            category: 'Utilities',
-            amount: 4500,
-            date: '2026-10-25',
-            paymentMethod: 'Online Banking',
-            status: 'Paid',
-          },
-          {
-            id: 5,
-            title: 'Printer Paper & Stationeries',
-            category: 'Office Supplies',
-            amount: 2100,
-            date: '2026-10-22',
-            paymentMethod: 'Cash',
-            status: 'Paid',
-          },
-          {
-            id: 6,
-            title: 'AWS Cloud Infrastructure',
-            category: 'Cloud Hosting',
-            amount: 12500,
-            date: '2026-10-20',
-            paymentMethod: 'Credit Card',
-            status: 'Pending',
-          },
-        ],
-        categories: [
-          'All',
-          'Utilities',
-          'Food & Dining',
-          'Software & Tools',
-          'Office Supplies',
-          'Cloud Hosting',
-        ],
-      })
-      .as('expenses.index')
+    // Projects CRUD Routes
+    router.get('projects', [controllers.Projects, 'index']).as('projects.index')
+    router.post('projects', [controllers.Projects, 'store']).as('projects.store')
+    router.put('projects/:id', [controllers.Projects, 'update']).as('projects.update')
+    router.post('projects/:id', [controllers.Projects, 'update']).as('projects.update.post')
+    router.delete('projects/:id', [controllers.Projects, 'destroy']).as('projects.destroy')
+
+    // Expenses CRUD Routes
+    router.get('expenses', [controllers.Expenses, 'index']).as('expenses.index')
+    router.post('expenses', [controllers.Expenses, 'store']).as('expenses.store')
+    router.put('expenses/:id', [controllers.Expenses, 'update']).as('expenses.update')
+    router.post('expenses/:id', [controllers.Expenses, 'update']).as('expenses.update.post')
+    router.delete('expenses/:id', [controllers.Expenses, 'destroy']).as('expenses.destroy')
+
+    // Settings Routes
+    router.get('settings', [controllers.Settings, 'index']).as('settings.index')
+    router.post('settings', [controllers.Settings, 'update']).as('settings.update')
+    router.post('settings/reset', [controllers.Settings, 'reset']).as('settings.reset')
 
     // Logout Route
     router.post('logout', [controllers.Session, 'destroy']).as('session.destroy')

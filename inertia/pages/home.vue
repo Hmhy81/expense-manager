@@ -1,40 +1,33 @@
-<script setup lang="ts">
+<script setup>
 import { Head, Link } from '@inertiajs/vue3'
-import {
-  Wallet,
-  ArrowRight,
-  TrendingUp,
-  PieChart,
-  Zap,
-  Lock,
-  Receipt,
-  CheckCircle2,
-} from 'lucide-vue-next'
+import AppLogo from '~/components/AppLogo.vue'
+import AppToaster from '~/components/AppToaster.vue'
+import { ArrowRight, TrendingUp, PieChart, Zap, Lock, Receipt, CheckCircle2 } from 'lucide-vue-next'
 
 const features = [
   {
     icon: Zap,
     color: 'text-amber-500 bg-amber-50',
     title: 'Fast Expense Logging',
-    description: 'Add and categorize expenses in seconds. Keep track of every single rupee or dollar seamlessly.',
+    description: 'Add and categorize expenses in seconds. Keep track of every single rupee without complex math.',
   },
   {
     icon: PieChart,
     color: 'text-indigo-600 bg-indigo-50',
     title: 'Visual Insights & Analytics',
-    description: 'Understand spending patterns across categories with intuitive stats and automated summaries.',
+    description: 'Understand spending patterns across project categories with real-time dynamic charts and breakdowns.',
   },
   {
     icon: TrendingUp,
     color: 'text-emerald-600 bg-emerald-50',
-    title: 'Smart Budget Control',
-    description: 'Stay ahead of monthly limits and plan future finances with real-time budget tracking.',
+    title: 'Running Total & Budget Tracking',
+    description: 'Track cumulative costs as they happen or set optional spending limits with automatic alerts.',
   },
   {
     icon: Lock,
     color: 'text-purple-600 bg-purple-50',
     title: 'Bank-Grade Privacy',
-    description: 'Your financial data is encrypted and protected with secure session management and authentication.',
+    description: 'Your financial data is protected with secure session management and encrypted local storage.',
   },
 ]
 </script>
@@ -46,12 +39,7 @@ const features = [
     <!-- Top Navigation -->
     <header class="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200/80">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
-        <Link href="/" class="flex items-center gap-2.5 font-bold text-xl tracking-tight text-slate-900 group">
-          <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-            <Wallet :size="20" />
-          </div>
-          <span class="text-slate-900">Expense<span class="text-indigo-600">Pro</span></span>
-        </Link>
+        <AppLogo href="/" size="md" />
 
         <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
           <a href="#features" class="hover:text-indigo-600 transition-colors">Features</a>
@@ -83,15 +71,15 @@ const features = [
         <!-- Tag Pill -->
         <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-semibold uppercase tracking-wider mb-6">
           <span class="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
-          Smart & Effortless Financial Management
+          Smart Project-Based Financial Tracker
         </div>
 
         <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-slate-900 tracking-tight max-w-4xl mx-auto leading-[1.15]">
-          Take complete control of your <span class="text-indigo-600">expenses</span> in one place.
+          Manage project expenses & <span class="text-indigo-600">receipts</span> in one place.
         </h1>
 
         <p class="mt-6 text-lg sm:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          Track day-to-day spending, monitor category budgets, and make smarter financial decisions with real-time analytics designed for clarity.
+          From house construction to launching a retail store or daily accounts—record payments, attach optional bills, and monitor cumulative costs effortlessly.
         </p>
 
         <!-- CTA Buttons -->
@@ -111,7 +99,7 @@ const features = [
           </Link>
         </div>
 
-        <!-- Product Trust & Feature Badges -->
+        <!-- Product Value Badges -->
         <div class="mt-8 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500 font-medium">
           <div class="flex items-center gap-1.5">
             <CheckCircle2 :size="16" class="text-emerald-500" />
@@ -145,23 +133,21 @@ const features = [
             <!-- Mini stats row in preview -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
               <div class="bg-white p-4 rounded-xl border border-slate-200/70 shadow-2xs">
-                <span class="text-xs text-slate-500 font-medium">Total Spent (Nov)</span>
-                <p class="text-xl font-bold text-slate-900 mt-1">Rs. 45,200</p>
+                <span class="text-xs text-slate-500 font-medium">Kul Lagat (Total Spent)</span>
+                <p class="text-xl font-bold text-slate-900 mt-1">Rs. 1,485,000</p>
                 <p class="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
-                  <TrendingUp :size="12" /> -12% vs last month
+                  <TrendingUp :size="12" /> Construction Project
                 </p>
               </div>
               <div class="bg-white p-4 rounded-xl border border-slate-200/70 shadow-2xs">
-                <span class="text-xs text-slate-500 font-medium">Monthly Budget</span>
-                <p class="text-xl font-bold text-indigo-600 mt-1">Rs. 80,000</p>
-                <div class="w-full bg-slate-100 rounded-full h-1.5 mt-2">
-                  <div class="bg-indigo-600 h-1.5 rounded-full" style="width: 56.5%"></div>
-                </div>
+                <span class="text-xs text-slate-500 font-medium">Largest Category</span>
+                <p class="text-xl font-bold text-indigo-600 mt-1">Bricks & Sand</p>
+                <p class="text-[11px] text-slate-500 mt-1">Rs. 475,000 recorded</p>
               </div>
               <div class="bg-white p-4 rounded-xl border border-slate-200/70 shadow-2xs">
-                <span class="text-xs text-slate-500 font-medium">Top Category</span>
-                <p class="text-xl font-bold text-purple-600 mt-1">Software & Cloud</p>
-                <p class="text-[11px] text-slate-500 mt-1">Rs. 27,000 recorded</p>
+                <span class="text-xs text-slate-500 font-medium">Document Proofs</span>
+                <p class="text-xl font-bold text-purple-600 mt-1">31 Slips Attached</p>
+                <p class="text-[11px] text-slate-500 mt-1">Receipts & Cash memos</p>
               </div>
             </div>
           </div>
@@ -171,9 +157,9 @@ const features = [
       <!-- Features Section -->
       <section id="features" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 border-t border-slate-200/70">
         <div class="text-center max-w-2xl mx-auto mb-16">
-          <h2 class="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-2">Designed for Efficiency</h2>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-2">Designed for Flexibility</h2>
           <p class="text-3xl font-extrabold text-slate-900 tracking-tight">Everything you need to track spending</p>
-          <p class="text-slate-600 mt-3 text-base">Simple enough for personal use, powerful enough for small businesses and freelance teams.</p>
+          <p class="text-slate-600 mt-3 text-base">Perfect for personal use, home building, or starting a new business venture.</p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -199,9 +185,9 @@ const features = [
       <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
         <div class="bg-indigo-600 rounded-3xl p-8 sm:p-12 text-white text-center relative overflow-hidden shadow-lg shadow-indigo-600/25">
           <div class="relative z-10 max-w-2xl mx-auto">
-            <h2 class="text-3xl font-extrabold sm:text-4xl tracking-tight">Ready to streamline your expense tracking?</h2>
+            <h2 class="text-3xl font-extrabold sm:text-4xl tracking-tight">Ready to track your project expenses?</h2>
             <p class="mt-4 text-indigo-100 text-base sm:text-lg">
-              Start managing your money today with seamless speed and full control over your data.
+              Start recording transactions and organizing receipts with zero complexity.
             </p>
             <div class="mt-8 flex justify-center">
               <Link
@@ -232,5 +218,6 @@ const features = [
         </div>
       </div>
     </footer>
+    <AppToaster />
   </div>
 </template>

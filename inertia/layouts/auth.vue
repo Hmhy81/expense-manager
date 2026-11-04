@@ -1,6 +1,6 @@
-<script setup lang="ts">
+<script setup>
 import Logo from '~/components/logo.vue'
-import FlashToasts from '~/components/flash_toasts.vue'
+import AppToaster from '~/components/AppToaster.vue'
 import ThemeToggle from '~/components/theme_toggle.vue'
 </script>
 
@@ -38,5 +38,5 @@ import ThemeToggle from '~/components/theme_toggle.vue'
       </div>
     </aside>
   </div>
-  <FlashToasts />
+  <AppToaster />
 </template>

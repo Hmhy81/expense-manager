@@ -1,8 +1,8 @@
-<script setup lang="ts">
+<script setup>
 import { usePage } from '@inertiajs/vue3'
 import { Link } from '@adonisjs/inertia/vue'
 import Logo from '~/components/logo.vue'
-import FlashToasts from '~/components/flash_toasts.vue'
+import AppToaster from '~/components/AppToaster.vue'
 import ThemeToggle from '~/components/theme_toggle.vue'
 
 const page = usePage()
@@ -25,5 +25,5 @@ const page = usePage()
     </div>
   </header>
   <slot />
-  <FlashToasts />
+  <AppToaster />
 </template>

@@ -1,6 +1,12 @@
-<script setup lang="ts">
+<script setup>
+import { ref } from 'vue'
 import { Head, Link, useForm } from '@inertiajs/vue3'
-import { Wallet, Mail, Lock, User, ArrowRight } from 'lucide-vue-next'
+import AppLogo from '~/components/AppLogo.vue'
+import AppToaster from '~/components/AppToaster.vue'
+import { Mail, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-vue-next'
+
+const showPassword = ref(false)
+const showPasswordConfirmation = ref(false)
 
 const form = useForm({
   fullName: '',
@@ -24,14 +30,9 @@ const submit = () => {
   <div class="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 selection:bg-indigo-600 selection:text-white">
     <!-- Header Logo -->
     <div class="sm:mx-auto sm:w-full sm:max-w-md text-center">
-      <Link href="/" class="inline-flex items-center gap-2.5 font-bold text-2xl text-slate-900 group">
-        <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm shadow-indigo-600/20 group-hover:scale-105 transition-transform">
-          <Wallet :size="20" />
-        </div>
-        <span>Expense<span class="text-indigo-600">Pro</span></span>
-      </Link>
+      <AppLogo href="/" size="lg" />
       <h2 class="mt-5 text-2xl font-extrabold text-slate-900 tracking-tight">Create your account</h2>
-      <p class="mt-1 text-sm text-slate-500">Join ExpensePro to track and optimize your expenditures.</p>
+      <p class="mt-1 text-sm text-slate-500">Join ExpensePro to track projects, expenses, and document proofs.</p>
     </div>
 
     <!-- Signup Card -->
@@ -40,7 +41,7 @@ const submit = () => {
         <form @submit.prevent="submit" class="space-y-4">
           <!-- Full Name -->
           <div>
-            <label for="fullName" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label for="fullName" class="block text-xs font-bold text-slate-700 tracking-wider mb-1.5">
               Full Name
             </label>
             <div class="relative">
@@ -65,7 +66,7 @@ const submit = () => {
 
           <!-- Email Address -->
           <div>
-            <label for="email" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label for="email" class="block text-xs font-bold text-slate-700 tracking-wider mb-1.5">
               Email Address
             </label>
             <div class="relative">
@@ -88,9 +89,9 @@ const submit = () => {
             </p>
           </div>
 
-          <!-- Password -->
+          <!-- Password with Toggle Visibility -->
           <div>
-            <label for="password" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label for="password" class="block text-xs font-bold text-slate-700 tracking-wider mb-1.5">
               Password
             </label>
             <div class="relative">
@@ -100,22 +101,32 @@ const submit = () => {
               <input
                 id="password"
                 v-model="form.password"
-                type="password"
+                :type="showPassword ? 'text' : 'password'"
                 autocomplete="new-password"
                 required
                 placeholder="At least 8 characters"
-                class="block w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
+                class="block w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
                 :class="{ 'border-rose-400 bg-rose-50/30': form.errors.password }"
               />
+              <button
+                type="button"
+                @click="showPassword = !showPassword"
+                class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                :title="showPassword ? 'Hide password' : 'Show password'"
+                tabindex="-1"
+              >
+                <Eye v-if="showPassword" :size="16" />
+                <EyeOff v-else :size="16" />
+              </button>
             </div>
             <p v-if="form.errors.password" class="mt-1.5 text-xs text-rose-500 font-medium">
               {{ form.errors.password }}
             </p>
           </div>
 
-          <!-- Confirm Password -->
+          <!-- Confirm Password with Toggle Visibility -->
           <div>
-            <label for="passwordConfirmation" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label for="passwordConfirmation" class="block text-xs font-bold text-slate-700 tracking-wider mb-1.5">
               Confirm Password
             </label>
             <div class="relative">
@@ -125,13 +136,23 @@ const submit = () => {
               <input
                 id="passwordConfirmation"
                 v-model="form.passwordConfirmation"
-                type="password"
+                :type="showPasswordConfirmation ? 'text' : 'password'"
                 autocomplete="new-password"
                 required
                 placeholder="Re-enter password"
-                class="block w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
+                class="block w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
                 :class="{ 'border-rose-400 bg-rose-50/30': form.errors.passwordConfirmation }"
               />
+              <button
+                type="button"
+                @click="showPasswordConfirmation = !showPasswordConfirmation"
+                class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                :title="showPasswordConfirmation ? 'Hide password' : 'Show password'"
+                tabindex="-1"
+              >
+                <Eye v-if="showPasswordConfirmation" :size="16" />
+                <EyeOff v-else :size="16" />
+              </button>
             </div>
             <p v-if="form.errors.passwordConfirmation" class="mt-1.5 text-xs text-rose-500 font-medium">
               {{ form.errors.passwordConfirmation }}
@@ -160,13 +181,7 @@ const submit = () => {
           </p>
         </div>
       </div>
-
-      <!-- Back to Landing Link -->
-      <div class="mt-6 text-center">
-        <Link href="/" class="text-xs font-medium text-slate-500 hover:text-slate-800 transition">
-          &larr; Back to Homepage
-        </Link>
-      </div>
     </div>
+    <AppToaster />
   </div>
 </template>

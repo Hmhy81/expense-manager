@@ -7,6 +7,107 @@
 import { BaseModel, column } from '@adonisjs/lucid/orm'
 import { DateTime } from 'luxon'
 
+export class ExpenseSchema extends BaseModel {
+  static $columns = ['amount', 'category', 'createdAt', 'date', 'id', 'notes', 'paymentMethod', 'projectId', 'receiptName', 'receiptUrl', 'status', 'title', 'updatedAt', 'userId', 'vendor'] as const
+  $columns = ExpenseSchema.$columns
+  @column()
+  declare amount: string
+  @column()
+  declare category: string
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare date: string
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare notes: string | null
+  @column()
+  declare paymentMethod: string | null
+  @column()
+  declare projectId: number
+  @column()
+  declare receiptName: string | null
+  @column()
+  declare receiptUrl: string | null
+  @column()
+  declare status: string | null
+  @column()
+  declare title: string
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+  @column()
+  declare userId: number
+  @column()
+  declare vendor: string | null
+}
+
+export class ProjectSchema extends BaseModel {
+  static $columns = ['createdAt', 'description', 'id', 'location', 'name', 'startDate', 'status', 'targetBudget', 'type', 'updatedAt', 'userId'] as const
+  $columns = ProjectSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare description: string | null
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare location: string | null
+  @column()
+  declare name: string
+  @column()
+  declare startDate: string | null
+  @column()
+  declare status: string | null
+  @column()
+  declare targetBudget: string | null
+  @column()
+  declare type: string | null
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+  @column()
+  declare userId: number
+}
+
+export class SettingSchema extends BaseModel {
+  static $columns = ['brandName', 'brandSubtitle', 'createdAt', 'currency', 'currencySymbol', 'dateFormat', 'decimalPlaces', 'id', 'logoMode', 'logoUrl', 'numberSystem', 'projectId', 'receiptSlipHeader', 'symbolPosition', 'themeId', 'updatedAt', 'userId'] as const
+  $columns = SettingSchema.$columns
+  @column()
+  declare brandName: string | null
+  @column()
+  declare brandSubtitle: string | null
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare currency: string | null
+  @column()
+  declare currencySymbol: string | null
+  @column()
+  declare dateFormat: string | null
+  @column()
+  declare decimalPlaces: number | null
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare logoMode: string | null
+  @column()
+  declare logoUrl: string | null
+  @column()
+  declare numberSystem: string | null
+  @column()
+  declare projectId: number | null
+  @column()
+  declare receiptSlipHeader: string | null
+  @column()
+  declare symbolPosition: string | null
+  @column()
+  declare themeId: string | null
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+  @column()
+  declare userId: number
+}
+
 export class UserSchema extends BaseModel {
   static $columns = ['createdAt', 'email', 'fullName', 'id', 'password', 'updatedAt'] as const
   $columns = UserSchema.$columns

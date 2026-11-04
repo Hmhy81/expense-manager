@@ -5,6 +5,9 @@ import { createInertiaApp } from '@inertiajs/vue3'
 import { TuyauProvider } from '@adonisjs/inertia/vue'
 import { createApp, type DefineComponent, h } from 'vue'
 import { resolvePageComponent } from '@adonisjs/inertia/helpers'
+import { initTheme } from '~/composables/useSettings'
+
+initTheme()
 
 const appName = import.meta.env.VITE_APP_NAME || 'AdonisJS'
 

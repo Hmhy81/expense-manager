@@ -13,7 +13,25 @@ export interface ApiDefinition {
     destroy: typeof routes['session.destroy']
   }
   dashboard: typeof routes['dashboard']
+  projects: {
+    index: typeof routes['projects.index']
+    store: typeof routes['projects.store']
+    update: typeof routes['projects.update'] & {
+      post: typeof routes['projects.update.post']
+    }
+    destroy: typeof routes['projects.destroy']
+  }
   expenses: {
     index: typeof routes['expenses.index']
+    store: typeof routes['expenses.store']
+    update: typeof routes['expenses.update'] & {
+      post: typeof routes['expenses.update.post']
+    }
+    destroy: typeof routes['expenses.destroy']
+  }
+  settings: {
+    index: typeof routes['settings.index']
+    update: typeof routes['settings.update']
+    reset: typeof routes['settings.reset']
   }
 }
