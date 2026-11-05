@@ -198,7 +198,7 @@ const handleSubmit = () => {
         </div>
 
         <div v-else class="text-[11px] text-slate-500 bg-white/70 p-2 rounded-lg border border-slate-200/60">
-          💡 <strong>Open / Untracked Budget:</strong> Agar aapko abhi total kharche ka andaza nahi hai to budget khali chhor dein. Aap jitne bhi payments record karenge wo openly calculate hoti rahen gi.
+          💡 <strong>Open / Untracked Budget:</strong> If you do not have a fixed budget limit, leave this blank. All recorded expenditures will be aggregated without a budget cap.
         </div>
       </div>
 

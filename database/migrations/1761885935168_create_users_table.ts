@@ -9,7 +9,9 @@ export default class extends BaseSchema {
       table.string('full_name').nullable()
       table.string('email', 254).notNullable().unique()
       table.string('password').notNullable()
-
+      table.string('phone').nullable()
+      table.string('role').nullable().defaultTo('user')
+      table.boolean('status').nullable().defaultTo(true)
       table.timestamp('created_at').notNullable()
       table.timestamp('updated_at').nullable()
     })

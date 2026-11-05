@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import AppLogo from '~/components/AppLogo.vue'
 import AppToaster from '~/components/AppToaster.vue'
@@ -54,6 +54,33 @@ const isMobileMenuOpen = ref(false)
 // Project Switcher state
 const isProjectDropdownOpen = ref(false)
 const isNewProjectModalOpen = ref(false)
+const projectDropdownRef = ref(null)
+
+const handleClickOutside = (event) => {
+  if (
+    isProjectDropdownOpen.value &&
+    projectDropdownRef.value &&
+    !projectDropdownRef.value.contains(event.target)
+  ) {
+    isProjectDropdownOpen.value = false
+  }
+}
+
+const handleKeydown = (event) => {
+  if (event.key === 'Escape' && isProjectDropdownOpen.value) {
+    isProjectDropdownOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleKeydown)
+})
 
 const switchProject = (proj) => {
   selectProjectById(proj.id)
@@ -140,7 +167,7 @@ const logout = () => {
           <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
             Active Project / Ledger
           </label>
-          <div class="relative">
+          <div class="relative" ref="projectDropdownRef">
             <button
               type="button"
               @click="isProjectDropdownOpen = !isProjectDropdownOpen"

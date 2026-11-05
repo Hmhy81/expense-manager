@@ -123,7 +123,6 @@ const features = [
                 <div class="w-3 h-3 rounded-full bg-rose-400"></div>
                 <div class="w-3 h-3 rounded-full bg-amber-400"></div>
                 <div class="w-3 h-3 rounded-full bg-emerald-400"></div>
-                <span class="text-xs font-mono text-slate-400 ml-2">https://app.expensepro.com/dashboard</span>
               </div>
               <div class="text-xs font-medium text-emerald-600 bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 rounded-full flex items-center gap-1">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Live Ledger Active
@@ -133,7 +132,7 @@ const features = [
             <!-- Mini stats row in preview -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
               <div class="bg-white p-4 rounded-xl border border-slate-200/70 shadow-2xs">
-                <span class="text-xs text-slate-500 font-medium">Kul Lagat (Total Spent)</span>
+                <span class="text-xs text-slate-500 font-medium">Total Spent</span>
                 <p class="text-xl font-bold text-slate-900 mt-1">Rs. 1,485,000</p>
                 <p class="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
                   <TrendingUp :size="12" /> Construction Project

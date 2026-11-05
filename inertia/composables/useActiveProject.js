@@ -55,6 +55,9 @@ export function useActiveProject() {
 
   // Live expenses for the currently active project
   const activeExpenses = computed(() => {
+    if (page.props.expenses && Array.isArray(page.props.expenses.data)) {
+      return page.props.expenses.data
+    }
     return page.props.activeExpenses || []
   })
 
@@ -64,8 +67,24 @@ export function useActiveProject() {
     return categoryMap[type] || categoryMap['Other Ledger']
   })
 
-  // Dynamic live stats for active project
+  // Dynamic live stats for active project (Uses backend SQL aggregate if available)
   const activeStats = computed(() => {
+    if (page.props.activeStats) {
+      const s = page.props.activeStats
+      return {
+        totalSpent: s.totalSpent,
+        grandTotal: s.grandTotal,
+        pendingTotal: s.pendingTotal,
+        totalCount: s.totalCount,
+        receiptsCount: s.receiptsCount,
+        targetBudget: s.targetBudget,
+        budgetPercent: s.budgetPercent,
+        totalSpentFormatted: `Rs. ${Number(s.totalSpent || 0).toLocaleString()}`,
+        pendingTotalFormatted: `Rs. ${Number(s.pendingTotal || 0).toLocaleString()}`,
+        targetBudgetFormatted: s.targetBudget ? `Rs. ${Number(s.targetBudget).toLocaleString()}` : null,
+      }
+    }
+
     const list = activeExpenses.value
     const totalSpent = list.filter((e) => e.status !== 'Pending').reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
     const grandTotal = list.reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
@@ -89,8 +108,12 @@ export function useActiveProject() {
     }
   })
 
-  // Category distribution calculation for dashboard charts
+  // Category distribution calculation for dashboard charts (Uses backend pre-aggregated SQL if available)
   const categoryDistribution = computed(() => {
+    if (page.props.categoryDistribution && Array.isArray(page.props.categoryDistribution)) {
+      return page.props.categoryDistribution
+    }
+
     const list = activeExpenses.value
     const total = list.reduce((sum, item) => sum + Number(item.amount || 0), 0)
     if (total === 0) return []

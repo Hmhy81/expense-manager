@@ -1,39 +1,73 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { Head, Link } from '@inertiajs/vue3'
+import { Head, Link, router } from '@inertiajs/vue3'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import AppLayout from '~/components/AppLayout.vue'
 import StatCard from '~/components/StatCard.vue'
 import ExpenseModal from '~/components/ExpenseModal.vue'
 import ConfirmModal from '~/components/ConfirmModal.vue'
 import ReceiptModal from '~/components/ReceiptModal.vue'
+import VoucherSlip from '~/components/VoucherSlip.vue'
+import Pagination from '~/components/Pagination.vue'
+import EmptyState from '~/components/EmptyState.vue'
 import { useActiveProject } from '~/composables/useActiveProject'
 import { useSettings } from '~/composables/useSettings'
-import { Plus, Search, Filter, Trash2, Edit2, Calendar, CreditCard, Download, FolderKanban } from 'lucide-vue-next'
-import { Paperclip, CheckCircle2, Clock, User, Receipt, FileText } from 'lucide-vue-next'
+import { useToast } from '~/composables/useToast'
+import { Plus, Search, Calendar, CreditCard, Download, FolderKanban, Printer, Paperclip, CheckCircle2, Clock, User, Receipt, FileText, Trash2, Edit2, Loader2 } from 'lucide-vue-next'
+
+const props = defineProps({
+  expenses: {
+    type: Object,
+    default: () => ({ data: [], meta: { total: 0, perPage: 10, currentPage: 1, lastPage: 1 } }),
+  },
+  filterStats: {
+    type: Object,
+    default: () => ({ filteredOutflow: 0, totalPaid: 0, totalPending: 0, totalCount: 0 }),
+  },
+  filters: {
+    type: Object,
+    default: () => ({
+      page: 1,
+      limit: 10,
+      search: '',
+      category: 'All',
+      receipt: 'all',
+      dateRange: 'all',
+      startDate: '',
+      endDate: '',
+    }),
+  },
+})
 
 const {
   activeProject,
-  activeExpenses,
   activeCategories,
-  activeStats,
   addExpense,
   updateExpense,
   deleteExpense,
 } = useActiveProject()
 const { formatCurrency, effectiveSettings } = useSettings()
+const toast = useToast()
 
 // Categories list with 'All' prepended
 const categories = computed(() => ['All', ...activeCategories.value])
 
-// Filtering & Search state
-const searchQuery = ref('')
-const selectedCategory = ref('All')
-const filterWithReceipt = ref('all') // 'all', 'with_receipt', 'without_receipt'
+// Filtering & Search state initialized from server props
+const searchQuery = ref(props.filters?.search || '')
+const selectedCategory = ref(props.filters?.category || 'All')
+const filterWithReceipt = ref(props.filters?.receipt || 'all') // 'all', 'with_receipt', 'without_receipt'
 
 // Date Range Filtering State
-const dateRangeOption = ref('all') // 'all', 'today', 'this_week', 'this_month', 'last_month', 'this_year', 'custom'
-const customStartDate = ref('')
-const customEndDate = ref('')
+const dateRangeOption = ref(props.filters?.dateRange || 'all')
+const customStartDate = ref(props.filters?.startDate || '')
+const customEndDate = ref(props.filters?.endDate || '')
+
+// Pagination State
+const currentPage = ref(props.expenses?.meta?.currentPage || 1)
+const pageSize = ref(props.expenses?.meta?.perPage || 10)
+const isExporting = ref(false)
+const isExportingPdf = ref(false)
 
 const datePresets = [
   { id: 'all', label: 'All Time' },
@@ -96,61 +130,125 @@ const activeDateBounds = computed(() => {
   return getStartAndEndDatesForOption(dateRangeOption.value)
 })
 
+// Sync when server props change (e.g. project switch or history navigation)
+watch(
+  () => props.filters,
+  (newFilters) => {
+    if (newFilters) {
+      if (newFilters.search !== undefined) searchQuery.value = newFilters.search
+      if (newFilters.category !== undefined) selectedCategory.value = newFilters.category
+      if (newFilters.receipt !== undefined) filterWithReceipt.value = newFilters.receipt
+      if (newFilters.dateRange !== undefined) dateRangeOption.value = newFilters.dateRange
+      if (newFilters.startDate !== undefined) customStartDate.value = newFilters.startDate
+      if (newFilters.endDate !== undefined) customEndDate.value = newFilters.endDate
+    }
+  },
+  { deep: true }
+)
+
+watch(
+  () => props.expenses?.meta,
+  (meta) => {
+    if (meta) {
+      currentPage.value = meta.currentPage
+      pageSize.value = meta.perPage
+    }
+  },
+  { deep: true }
+)
+
 // Reset category filter if it doesn't exist in the active project
 watch(categories, (newCats) => {
   if (selectedCategory.value !== 'All' && !newCats.includes(selectedCategory.value)) {
     selectedCategory.value = 'All'
+    fetchFilteredExpenses(1)
   }
 })
 
-// Scoped filtered expenses for active project
-const filteredExpenses = computed(() => {
-  return activeExpenses.value.filter((item) => {
-    const q = searchQuery.value.toLowerCase()
-    const matchesSearch =
-      item.title.toLowerCase().includes(q) ||
-      (item.vendor && item.vendor.toLowerCase().includes(q)) ||
-      (item.paymentMethod && item.paymentMethod.toLowerCase().includes(q))
+// Server-side Query Fetcher with debounced search
+let searchDebounceTimer = null
 
-    const matchesCategory =
-      selectedCategory.value === 'All' || item.category === selectedCategory.value
+const fetchFilteredExpenses = (page = 1) => {
+  const queryParams = {
+    projectId: activeProject.value?.id,
+    page,
+    limit: pageSize.value,
+  }
 
-    const matchesReceipt =
-      filterWithReceipt.value === 'all' ||
-      (filterWithReceipt.value === 'with_receipt' && item.hasReceipt) ||
-      (filterWithReceipt.value === 'without_receipt' && !item.hasReceipt)
+  if (searchQuery.value?.trim()) {
+    queryParams.search = searchQuery.value.trim()
+  }
+  if (selectedCategory.value && selectedCategory.value !== 'All') {
+    queryParams.category = selectedCategory.value
+  }
+  if (filterWithReceipt.value && filterWithReceipt.value !== 'all') {
+    queryParams.receipt = filterWithReceipt.value
+  }
+  if (dateRangeOption.value && dateRangeOption.value !== 'all') {
+    queryParams.dateRange = dateRangeOption.value
+    if (dateRangeOption.value === 'custom') {
+      if (customStartDate.value) queryParams.startDate = customStartDate.value
+      if (customEndDate.value) queryParams.endDate = customEndDate.value
+    }
+  }
 
-    const matchesDate = (() => {
-      if (dateRangeOption.value === 'all') return true
-      if (!item.date) return false
-
-      const itemDate = item.date.slice(0, 10)
-      const { start, end } = activeDateBounds.value
-
-      if (start && itemDate < start) return false
-      if (end && itemDate > end) return false
-      return true
-    })()
-
-    return matchesSearch && matchesCategory && matchesReceipt && matchesDate
+  router.get('/expenses', queryParams, {
+    preserveState: true,
+    preserveScroll: true,
+    only: ['expenses', 'filterStats', 'filters'],
   })
+}
+
+// Watch search input with 350ms debounce
+watch(searchQuery, () => {
+  clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    currentPage.value = 1
+    fetchFilteredExpenses(1)
+  }, 350)
 })
 
-const totalExpenseAmount = computed(() => {
-  return filteredExpenses.value.reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
-})
+const selectCategory = (cat) => {
+  if (selectedCategory.value === cat) return
+  selectedCategory.value = cat
+  currentPage.value = 1
+  fetchFilteredExpenses(1)
+}
 
-const totalPaidAmount = computed(() => {
-  return filteredExpenses.value
-    .filter((e) => e.status === 'Paid')
-    .reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
-})
+const selectReceiptFilter = (filter) => {
+  if (filterWithReceipt.value === filter) return
+  filterWithReceipt.value = filter
+  currentPage.value = 1
+  fetchFilteredExpenses(1)
+}
 
-const totalPendingAmount = computed(() => {
-  return filteredExpenses.value
-    .filter((e) => e.status === 'Pending')
-    .reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
-})
+const selectDatePreset = (presetId) => {
+  if (dateRangeOption.value === presetId) return
+  dateRangeOption.value = presetId
+  if (presetId !== 'custom') {
+    customStartDate.value = ''
+    customEndDate.value = ''
+    currentPage.value = 1
+    fetchFilteredExpenses(1)
+  }
+}
+
+const applyCustomDates = () => {
+  currentPage.value = 1
+  fetchFilteredExpenses(1)
+}
+
+const clearCustomDates = () => {
+  customStartDate.value = ''
+  customEndDate.value = ''
+  currentPage.value = 1
+  fetchFilteredExpenses(1)
+}
+
+const handlePageChange = ({ page, pageSize: newPageSize }) => {
+  pageSize.value = newPageSize
+  fetchFilteredExpenses(page)
+}
 
 // Modals State
 const isExpenseModalOpen = ref(false)
@@ -220,31 +318,259 @@ const openReceiptModal = (expense) => {
   isReceiptModalOpen.value = true
 }
 
-// Export CSV handler
-const exportCSV = () => {
-  const headers = ['ID', 'Title', 'Vendor', 'Category', 'Amount (PKR)', 'Date', 'Payment Method', 'Status', 'Has Receipt', 'Notes']
-  const rows = filteredExpenses.value.map((e) => [
-    e.id,
-    `"${(e.title || '').replace(/"/g, '""')}"`,
-    `"${(e.vendor || '').replace(/"/g, '""')}"`,
-    `"${(e.category || '').replace(/"/g, '""')}"`,
-    e.amount,
-    e.date,
-    e.paymentMethod,
-    e.status,
-    e.hasReceipt ? 'Yes' : 'No',
-    `"${(e.notes || '').replace(/"/g, '""')}"`,
-  ])
+// Fetch all filtered rows for full export (CSV or PDF)
+async function fetchAllFilteredExpensesForExport() {
+  const params = new URLSearchParams()
+  params.append('export', 'json')
+  if (activeProject.value?.id) params.append('projectId', String(activeProject.value.id))
+  if (searchQuery.value?.trim()) params.append('search', searchQuery.value.trim())
+  if (selectedCategory.value && selectedCategory.value !== 'All') params.append('category', selectedCategory.value)
+  if (filterWithReceipt.value && filterWithReceipt.value !== 'all') params.append('receipt', filterWithReceipt.value)
+  if (dateRangeOption.value && dateRangeOption.value !== 'all') {
+    params.append('dateRange', dateRangeOption.value)
+    if (dateRangeOption.value === 'custom') {
+      if (customStartDate.value) params.append('startDate', customStartDate.value)
+      if (customEndDate.value) params.append('endDate', customEndDate.value)
+    }
+  }
 
-  const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
-  const encodedUri = encodeURI(csvContent)
-  const link = document.createElement('a')
-  link.setAttribute('href', encodedUri)
-  const safeName = (activeProject.value?.name || 'ledger').toLowerCase().replace(/[^a-z0-9]/g, '_')
-  link.setAttribute('download', `${safeName}_expenses_${new Date().toISOString().split('T')[0]}.csv`)
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+  const res = await fetch(`/expenses?${params.toString()}`, {
+    headers: { Accept: 'application/json' },
+  })
+  if (!res.ok) throw new Error('Failed to fetch export data')
+  return await res.json()
+}
+
+// Export CSV handler
+const exportCSV = async () => {
+  try {
+    isExporting.value = true
+    const allRows = await fetchAllFilteredExpensesForExport()
+    if (!allRows || allRows.length === 0) {
+      toast.error('No expense records available to export.')
+      return
+    }
+
+    const headers = ['ID', 'Title', 'Vendor', 'Category', 'Amount (PKR)', 'Date', 'Payment Method', 'Status', 'Has Receipt', 'Notes']
+    const rows = allRows.map((e) => [
+      e.id,
+      `"${(e.title || '').replace(/"/g, '""')}"`,
+      `"${(e.vendor || '').replace(/"/g, '""')}"`,
+      `"${(e.category || '').replace(/"/g, '""')}"`,
+      e.amount,
+      e.date,
+      e.paymentMethod,
+      e.status,
+      e.hasReceipt ? 'Yes' : 'No',
+      `"${(e.notes || '').replace(/"/g, '""')}"`,
+    ])
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    const safeName = (activeProject.value?.name || 'ledger').toLowerCase().replace(/[^a-z0-9]/g, '_')
+    link.setAttribute('download', `${safeName}_expenses_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    toast.success(`Exported ${allRows.length} records to CSV!`)
+  } catch (err) {
+    toast.error('Failed to export CSV. Please try again.')
+  } finally {
+    isExporting.value = false
+  }
+}
+
+// Standalone Voucher Print State (direct row printing without opening any modal)
+const voucherToPrint = ref(null)
+
+// Direct Print Voucher handler for individual table row WITHOUT opening modal
+const printExpenseVoucher = (expense) => {
+  voucherToPrint.value = {
+    id: expense.id,
+    title: expense.title,
+    vendor: expense.vendor,
+    category: expense.category,
+    amount: expense.amount,
+    date: expense.date,
+    paymentMethod: expense.paymentMethod,
+    status: expense.status,
+    notes: expense.notes,
+  }
+
+  // Allow DOM to mount the hidden print component, then trigger native print
+  setTimeout(() => {
+    const cleanup = () => {
+      voucherToPrint.value = null
+      window.removeEventListener('afterprint', cleanup)
+    }
+    window.addEventListener('afterprint', cleanup)
+    window.print()
+
+    // Safety fallback cleanup
+    setTimeout(cleanup, 2500)
+  }, 100)
+}
+
+// Print full ledger
+const printFullLedger = () => {
+  window.print()
+}
+
+// Export Complete PDF Statement handler
+const exportPDF = async () => {
+  try {
+    isExportingPdf.value = true
+    const allRows = await fetchAllFilteredExpensesForExport()
+    if (!allRows || allRows.length === 0) {
+      toast.error('No expense records available to export.')
+      return
+    }
+
+    const doc = new jsPDF('landscape', 'pt', 'a4')
+
+    const projectName = activeProject.value?.name || 'Expense Ledger'
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    const currencySym = effectiveSettings.value?.currencySymbol || 'PKR'
+
+    // Document Title Header
+    doc.setFontSize(18)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(30, 41, 59)
+    doc.text(projectName, 40, 42)
+
+    doc.setFontSize(9.5)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(100, 116, 139)
+    doc.text(`Official Expense Ledger & Disbursement Statement | Generated: ${dateStr}`, 40, 58)
+
+    // Applied Filter Meta
+    let filterText = `Filter: ${datePresets.find((p) => p.id === dateRangeOption.value)?.label || 'All Time'}`
+    if (dateRangeOption.value === 'custom') {
+      filterText += ` (${customStartDate.value || 'Beginning'} to ${customEndDate.value || 'Today'})`
+    } else if (dateRangeOption.value !== 'all' && activeDateBounds.value.start) {
+      filterText += ` (${activeDateBounds.value.start} to ${activeDateBounds.value.end})`
+    }
+    if (selectedCategory.value !== 'All') {
+      filterText += ` | Category: ${selectedCategory.value}`
+    }
+    if (filterWithReceipt.value !== 'all') {
+      filterText += ` | Receipt: ${filterWithReceipt.value === 'with_receipt' ? 'Attached Proof Only' : 'Without Proof'}`
+    }
+    doc.text(filterText, 40, 72)
+
+    // Summary Metrics Banner
+    doc.setDrawColor(226, 232, 240)
+    doc.setFillColor(248, 250, 252)
+    doc.roundedRect(40, 84, 762, 44, 6, 6, 'FD')
+
+    doc.setFontSize(8.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(71, 85, 105)
+    doc.text('TOTAL FILTERED OUTFLOW', 55, 101)
+    doc.text('SETTLED / CLEARED', 315, 101)
+    doc.text('PENDING BALANCE DUE', 575, 101)
+
+    doc.setFontSize(13)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(79, 70, 229)
+    doc.text(`${currencySym} ${Number(props.filterStats.filteredOutflow).toLocaleString()}`, 55, 118)
+
+    doc.setTextColor(5, 150, 105)
+    doc.text(`${currencySym} ${Number(props.filterStats.totalPaid).toLocaleString()}`, 315, 118)
+
+    doc.setTextColor(217, 119, 6)
+    doc.text(`${currencySym} ${Number(props.filterStats.totalPending).toLocaleString()}`, 575, 118)
+
+    // Prepare Table Rows
+    const tableHeaders = [['#', 'Date', 'Description / Title', 'Vendor / Payee', 'Category', 'Payment Channel', 'Status', `Amount (${currencySym})`]]
+    const tableData = allRows.map((e, index) => [
+      index + 1,
+      e.date || '-',
+      e.title || '-',
+      e.vendor || 'Direct Purchase',
+      e.category || 'General',
+      e.paymentMethod || 'Cash',
+      e.status || 'Paid',
+      Number(e.amount || 0).toLocaleString(),
+    ])
+
+    // Summary Total Row at the bottom
+    tableData.push([
+      '',
+      '',
+      'TOTAL STATEMENT AMOUNT',
+      '',
+      '',
+      '',
+      `${allRows.length} Record${allRows.length > 1 ? 's' : ''}`,
+      Number(props.filterStats.filteredOutflow).toLocaleString(),
+    ])
+
+    autoTable(doc, {
+      head: tableHeaders,
+      body: tableData,
+      startY: 140,
+      margin: { left: 40, right: 40, bottom: 40 },
+      theme: 'grid',
+      headStyles: {
+        fillColor: [30, 41, 59],
+        textColor: [255, 255, 255],
+        fontSize: 8.5,
+        fontStyle: 'bold',
+        halign: 'left',
+      },
+      columnStyles: {
+        0: { cellWidth: 28, halign: 'center' },
+        1: { cellWidth: 70 },
+        2: { cellWidth: 170 },
+        3: { cellWidth: 140 },
+        4: { cellWidth: 90 },
+        5: { cellWidth: 90 },
+        6: { cellWidth: 74, halign: 'center' },
+        7: { cellWidth: 100, halign: 'right', fontStyle: 'bold' },
+      },
+      bodyStyles: {
+        fontSize: 8.5,
+        textColor: [51, 65, 85],
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252],
+      },
+      didParseCell: (data) => {
+        if (data.row.index === tableData.length - 1) {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.fillColor = [241, 245, 249]
+          data.cell.styles.textColor = [15, 23, 42]
+        }
+      },
+      foot: [],
+    })
+
+    // Page Numbers Footer
+    const totalPdfPages = doc.internal.getNumberOfPages()
+    for (let i = 1; i <= totalPdfPages; i++) {
+      doc.setPage(i)
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(148, 163, 184)
+      doc.text(
+        `ExpensePro Portal Statement - Page ${i} of ${totalPdfPages}`,
+        doc.internal.pageSize.getWidth() / 2,
+        doc.internal.pageSize.getHeight() - 18,
+        { align: 'center' }
+      )
+    }
+
+    const safeName = (activeProject.value?.name || 'ledger').toLowerCase().replace(/[^a-z0-9]/g, '_')
+    doc.save(`${safeName}_expenses_${new Date().toISOString().split('T')[0]}.pdf`)
+    toast.success('Complete PDF statement downloaded successfully!')
+  } catch (err) {
+    toast.error('Failed to export PDF. Please try again.')
+  } finally {
+    isExportingPdf.value = false
+  }
 }
 
 // Dynamic badge palette for categories
@@ -273,25 +599,49 @@ const getCategoryColor = (category) => {
     :title="`${activeProject?.name || 'Project'} Payments & Ledger`"
     :subtitle="activeProject?.description || 'Itemized expenditures, attached bills, and transaction vouchers.'"
     activePage="expenses"
-    :expensesCount="activeExpenses.length"
+    :expensesCount="props.expenses?.meta?.total || 0"
   >
     <!-- Top Action Slot -->
     <template #actions>
       <template v-if="activeProject">
         <button
           @click="exportCSV"
+          :disabled="isExporting"
           type="button"
-          class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-xl shadow-2xs transition cursor-pointer"
+          class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 border border-slate-200/90 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl shadow-2xs transition cursor-pointer"
           title="Download CSV spreadsheet"
         >
-          <Download :size="15" class="text-slate-500" />
-          <span class="hidden sm:inline">Export CSV</span>
+          <Loader2 v-if="isExporting" :size="14" class="animate-spin text-indigo-600" />
+          <Download v-else :size="14" class="text-slate-500" />
+          <span class="hidden sm:inline">{{ isExporting ? 'Exporting...' : 'Export CSV' }}</span>
+        </button>
+
+        <button
+          @click="exportPDF"
+          :disabled="isExportingPdf"
+          type="button"
+          class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 border border-slate-200/90 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl shadow-2xs transition cursor-pointer"
+          title="Download complete PDF statement"
+        >
+          <Loader2 v-if="isExportingPdf" :size="14" class="animate-spin text-rose-600" />
+          <FileText v-else :size="14" class="text-rose-600" />
+          <span class="hidden sm:inline">{{ isExportingPdf ? 'Generating...' : 'Export PDF' }}</span>
+        </button>
+
+        <button
+          @click="printFullLedger"
+          type="button"
+          class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl shadow-2xs transition cursor-pointer"
+          title="Print complete ledger or save as PDF via browser"
+        >
+          <Printer :size="14" class="text-indigo-600" />
+          <span class="hidden sm:inline">Print</span>
         </button>
 
         <button
           @click="openAddModal"
           type="button"
-          class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-xl shadow-xs transition cursor-pointer"
+          class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold px-3.5 sm:px-4 py-2 rounded-xl shadow-xs transition cursor-pointer"
         >
           <Plus :size="16" />
           <span>Add New Payment</span>
@@ -308,357 +658,371 @@ const getCategoryColor = (category) => {
     </template>
 
     <!-- Empty Projects State -->
-    <div
+    <EmptyState
       v-if="!activeProject"
-      class="bg-white border-2 border-dashed border-slate-200/90 rounded-2xl p-10 sm:p-14 text-center flex flex-col items-center justify-center space-y-4"
-    >
-      <div class="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-2xs">
-        <FolderKanban :size="28" />
-      </div>
-      <div class="space-y-1">
-        <h3 class="text-base font-bold text-slate-900">No Projects Found</h3>
-        <p class="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
-          Please create or select a project first before logging expense vouchers.
-        </p>
-      </div>
-      <Link
-        href="/projects"
-        class="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition"
-      >
-        <Plus :size="15" />
-        <span>Create Project</span>
-      </Link>
-    </div>
+      :icon="FolderKanban"
+      title="No Projects Found"
+      description="Please create or select a project first before logging expense vouchers."
+      actionText="Create Project"
+      actionHref="/projects"
+      dashed
+    />
 
     <!-- Active Ledger View -->
     <template v-else>
-      <!-- 3 Modular Stat Cards Scoped to Current Filter -->
+      <!-- 3 Modular Stat Cards Scoped to Current Filter (Driven by SQL Aggregates) -->
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
-      <StatCard
-        title="Filtered Outflow"
-        :value="formatCurrency(totalExpenseAmount)"
-        :subtitle="`${filteredExpenses.length} entries matching search`"
-        :icon="Receipt"
-        color="indigo"
-      />
+        <StatCard
+          title="Filtered Outflow"
+          :value="formatCurrency(props.filterStats.filteredOutflow)"
+          :subtitle="`${props.filterStats.totalCount} entries matching search`"
+          :icon="Receipt"
+          color="indigo"
+        />
 
-      <StatCard
-        title="Settled / Paid"
-        :value="formatCurrency(totalPaidAmount)"
-        subtitle="Cleared with contractor or vendor"
-        :icon="CheckCircle2"
-        color="emerald"
-      />
+        <StatCard
+          title="Settled / Paid"
+          :value="formatCurrency(props.filterStats.totalPaid)"
+          subtitle="Cleared with contractor or vendor"
+          :icon="CheckCircle2"
+          color="emerald"
+        />
 
-      <StatCard
-        title="Pending / Balance Due"
-        :value="formatCurrency(totalPendingAmount)"
-        subtitle="Requires future clearance"
-        :icon="Clock"
-        color="amber"
-      />
-    </div>
-
-    <!-- Main Table Card -->
-    <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
-      <!-- Filter and Search Header -->
-      <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white">
-        <!-- Search Input -->
-        <div class="relative w-full md:w-80">
-          <Search :size="16" class="absolute left-3.5 top-3 text-slate-400" />
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Search payments, vendors, cheque #..."
-            class="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition"
-          />
-        </div>
-
-        <!-- Receipt & Status Filters -->
-        <div class="flex items-center gap-2 self-end md:self-auto">
-          <div class="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200/80 text-xs font-medium text-slate-600">
-            <button
-              type="button"
-              @click="filterWithReceipt = 'all'"
-              :class="[
-                'px-2.5 py-1 rounded-lg transition cursor-pointer',
-                filterWithReceipt === 'all' ? 'bg-white font-semibold text-slate-900 shadow-2xs' : 'hover:text-slate-900',
-              ]"
-            >
-              All
-            </button>
-            <button
-              type="button"
-              @click="filterWithReceipt = 'with_receipt'"
-              :class="[
-                'px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1',
-                filterWithReceipt === 'with_receipt' ? 'bg-white font-semibold text-emerald-700 shadow-2xs' : 'hover:text-slate-900',
-              ]"
-            >
-              <Paperclip :size="12" />
-              <span>With Receipt</span>
-            </button>
-            <button
-              type="button"
-              @click="filterWithReceipt = 'without_receipt'"
-              :class="[
-                'px-2.5 py-1 rounded-lg transition cursor-pointer',
-                filterWithReceipt === 'without_receipt' ? 'bg-white font-semibold text-slate-900 shadow-2xs' : 'hover:text-slate-900',
-              ]"
-            >
-              No Receipt
-            </button>
-          </div>
-        </div>
+        <StatCard
+          title="Pending / Balance Due"
+          :value="formatCurrency(props.filterStats.totalPending)"
+          subtitle="Requires future clearance"
+          :icon="Clock"
+          color="amber"
+        />
       </div>
 
-      <!-- Date Range Filter Bar -->
-      <div class="px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2.5 text-xs">
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="text-slate-500 font-semibold flex items-center gap-1 mr-0.5 text-xs">
-            <Calendar :size="13" class="text-indigo-600" />
-            <span>Date Range:</span>
-          </span>
+      <!-- Main Table Card -->
+      <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
+        <!-- Filter and Search Header -->
+        <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white">
+          <!-- Search Input -->
+          <div class="relative w-full md:w-80">
+            <Search :size="16" class="absolute left-3.5 top-3 text-slate-400" />
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search payments, vendors, cheque #..."
+              class="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition"
+            />
+          </div>
 
-          <div class="inline-flex items-center bg-white p-0.5 rounded-xl border border-slate-200/90 shadow-2xs overflow-x-auto">
-            <button
-              v-for="preset in datePresets"
-              :key="preset.id"
-              type="button"
-              @click="dateRangeOption = preset.id"
-              :class="[
-                'px-2.5 py-1 rounded-lg font-medium transition cursor-pointer text-xs whitespace-nowrap',
-                dateRangeOption === preset.id
-                  ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50',
-              ]"
-            >
-              {{ preset.label }}
-            </button>
+          <!-- Receipt & Status Filters -->
+          <div class="flex items-center gap-2 self-end md:self-auto">
+            <div class="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200/80 text-xs font-medium text-slate-600">
+              <button
+                type="button"
+                @click="selectReceiptFilter('all')"
+                :class="[
+                  'px-2.5 py-1 rounded-lg transition cursor-pointer',
+                  filterWithReceipt === 'all' ? 'bg-white font-semibold text-slate-900 shadow-2xs' : 'hover:text-slate-900',
+                ]"
+              >
+                All
+              </button>
+              <button
+                type="button"
+                @click="selectReceiptFilter('with_receipt')"
+                :class="[
+                  'px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1',
+                  filterWithReceipt === 'with_receipt' ? 'bg-white font-semibold text-emerald-700 shadow-2xs' : 'hover:text-slate-900',
+                ]"
+              >
+                <Paperclip :size="12" />
+                <span>With Receipt</span>
+              </button>
+              <button
+                type="button"
+                @click="selectReceiptFilter('without_receipt')"
+                :class="[
+                  'px-2.5 py-1 rounded-lg transition cursor-pointer',
+                  filterWithReceipt === 'without_receipt' ? 'bg-white font-semibold text-slate-900 shadow-2xs' : 'hover:text-slate-900',
+                ]"
+              >
+                No Receipt
+              </button>
+            </div>
           </div>
         </div>
 
-        <!-- Custom Date Range Inputs when Custom is selected -->
-        <div v-if="dateRangeOption === 'custom'" class="flex items-center gap-2 flex-wrap">
-          <div class="flex items-center gap-1.5">
-            <label class="text-[11px] font-semibold text-slate-500">From:</label>
-            <input
-              v-model="customStartDate"
-              type="date"
-              class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
-            />
+        <!-- Date Range Filter Bar -->
+        <div class="px-4 py-2.5 bg-slate-50/70 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-slate-500 font-semibold flex items-center gap-1 mr-0.5 text-xs">
+              <Calendar :size="13" class="text-indigo-600" />
+              <span>Date Range:</span>
+            </span>
+
+            <div class="inline-flex items-center bg-white p-0.5 rounded-xl border border-slate-200/90 shadow-2xs overflow-x-auto">
+              <button
+                v-for="preset in datePresets"
+                :key="preset.id"
+                type="button"
+                @click="selectDatePreset(preset.id)"
+                :class="[
+                  'px-2.5 py-1 rounded-lg font-medium transition cursor-pointer text-xs whitespace-nowrap',
+                  dateRangeOption === preset.id
+                    ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50',
+                ]"
+              >
+                {{ preset.label }}
+              </button>
+            </div>
           </div>
-          <div class="flex items-center gap-1.5">
-            <label class="text-[11px] font-semibold text-slate-500">To:</label>
-            <input
-              v-model="customEndDate"
-              type="date"
-              class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
-            />
+
+          <!-- Custom Date Range Inputs when Custom is selected -->
+          <div v-if="dateRangeOption === 'custom'" class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-1.5">
+              <label class="text-[11px] font-semibold text-slate-500">From:</label>
+              <input
+                v-model="customStartDate"
+                @change="applyCustomDates"
+                type="date"
+                class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+              />
+            </div>
+            <div class="flex items-center gap-1.5">
+              <label class="text-[11px] font-semibold text-slate-500">To:</label>
+              <input
+                v-model="customEndDate"
+                @change="applyCustomDates"
+                type="date"
+                class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+              />
+            </div>
+            <button
+              v-if="customStartDate || customEndDate"
+              type="button"
+              @click="clearCustomDates"
+              class="text-[11px] text-slate-500 hover:text-rose-600 font-semibold underline cursor-pointer ml-1"
+            >
+              Clear
+            </button>
           </div>
+
+          <!-- Active Date Indicator Pill -->
+          <div v-else-if="dateRangeOption !== 'all'" class="text-[11px] text-slate-500 font-medium">
+            Showing: <strong class="text-slate-800">{{ activeDateBounds.start }}</strong> to <strong class="text-slate-800">{{ activeDateBounds.end }}</strong>
+          </div>
+        </div>
+
+        <!-- Category Filter Tabs Dynamically Scoped to Active Project -->
+        <div class="p-3 bg-slate-50/50 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto text-xs font-semibold overscroll-contain">
           <button
-            v-if="customStartDate || customEndDate"
+            v-for="cat in categories"
+            :key="cat"
             type="button"
-            @click="customStartDate = ''; customEndDate = ''"
-            class="text-[11px] text-slate-500 hover:text-rose-600 font-semibold underline cursor-pointer ml-1"
+            @click="selectCategory(cat)"
+            :class="[
+              'px-3.5 py-1.5 rounded-xl transition shrink-0 cursor-pointer',
+              selectedCategory === cat
+                ? 'bg-indigo-600 text-white shadow-2xs'
+                : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80',
+            ]"
           >
-            Clear
+            {{ cat }}
           </button>
         </div>
 
-        <!-- Active Date Indicator Pill -->
-        <div v-else-if="dateRangeOption !== 'all'" class="text-[11px] text-slate-500 font-medium">
-          Showing: <strong class="text-slate-800">{{ activeDateBounds.start }}</strong> to <strong class="text-slate-800">{{ activeDateBounds.end }}</strong>
-        </div>
-      </div>
+        <!-- Table View -->
+        <div class="overflow-x-auto">
+          <table v-if="props.expenses?.data?.length > 0" class="w-full text-left text-sm text-slate-600">
+            <thead class="bg-slate-50/80 border-b border-slate-200/60 text-xs font-bold text-slate-900 tracking-wider">
+              <tr>
+                <th scope="col" class="py-3 px-4 w-12 text-center">#</th>
+                <th scope="col" class="py-3 px-5">Item</th>
+                <th scope="col" class="py-3 px-5">Vendor</th>
+                <th scope="col" class="py-3 px-5">Category</th>
+                <th scope="col" class="py-3 px-5">Method</th>
+                <th scope="col" class="py-3 px-5">Receipt Slip</th>
+                <th scope="col" class="py-3 px-5">Status</th>
+                <th scope="col" class="py-3 px-5">Date</th>
+                <th scope="col" class="py-3 px-5 text-right">Amount ({{ effectiveSettings.currencySymbol }})</th>
+                <th scope="col" class="py-3 px-5 text-center">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr
+                v-for="(expense, index) in props.expenses.data"
+                :key="expense.id"
+                class="hover:bg-slate-50/70 transition-colors group"
+              >
+                <!-- Serial Number (continuous across pages) -->
+                <td class="py-3.5 px-4 text-center text-xs font-bold text-slate-400 whitespace-nowrap">
+                  {{ (props.expenses.meta.currentPage - 1) * props.expenses.meta.perPage + index + 1 }}
+                </td>
 
-      <!-- Category Filter Tabs Dynamically Scoped to Active Project -->
-      <div class="p-3 bg-slate-50/50 border-b border-slate-100 flex items-center gap-1.5 overflow-x-auto text-xs font-semibold overscroll-contain">
-        <button
-          v-for="cat in categories"
-          :key="cat"
-          type="button"
-          @click="selectedCategory = cat"
-          :class="[
-            'px-3.5 py-1.5 rounded-xl transition shrink-0 cursor-pointer',
-            selectedCategory === cat
-              ? 'bg-indigo-600 text-white shadow-2xs'
-              : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80',
-          ]"
-        >
-          {{ cat }}
-        </button>
-      </div>
+                <!-- Description / Notes -->
+                <td class="py-3.5 px-5">
+                  <div class="font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                    {{ expense.title }}
+                  </div>
+                  <div v-if="expense.notes" class="text-xs text-slate-400 truncate max-w-xs mt-0.5">
+                    {{ expense.notes }}
+                  </div>
+                </td>
 
-      <!-- Table View -->
-      <div class="overflow-x-auto">
-        <table v-if="filteredExpenses.length > 0" class="w-full text-left text-sm text-slate-600">
-          <thead class="bg-slate-50/80 border-b border-slate-200/60 text-xs font-bold text-slate-900 tracking-wider">
-            <tr>
-              <th scope="col" class="py-3 px-5">Item</th>
-              <th scope="col" class="py-3 px-5">Vendor</th>
-              <th scope="col" class="py-3 px-5">Category</th>
-              <th scope="col" class="py-3 px-5">Method</th>
-              <th scope="col" class="py-3 px-5">Receipt Slip</th>
-              <th scope="col" class="py-3 px-5">Status</th>
-              <th scope="col" class="py-3 px-5">Date</th>
-              <th scope="col" class="py-3 px-5 text-right">Amount ({{ effectiveSettings.currencySymbol }})</th>
-              <th scope="col" class="py-3 px-5 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100">
-            <tr
-              v-for="expense in filteredExpenses"
-              :key="expense.id"
-              class="hover:bg-slate-50/70 transition-colors group"
-            >
-              <!-- Description / Notes -->
-              <td class="py-3.5 px-5">
-                <div class="font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors">
-                  {{ expense.title }}
-                </div>
-                <div v-if="expense.notes" class="text-xs text-slate-400 truncate max-w-xs mt-0.5">
-                  {{ expense.notes }}
-                </div>
-              </td>
+                <!-- Vendor -->
+                <td class="py-3.5 px-5 text-xs text-slate-600 font-medium whitespace-nowrap">
+                  <span class="flex items-center gap-1.5">
+                    <User :size="13" class="text-slate-400" />
+                    {{ expense.vendor || 'Direct Purchase' }}
+                  </span>
+                </td>
 
-              <!-- Vendor -->
-              <td class="py-3.5 px-5 text-xs text-slate-600 font-medium whitespace-nowrap">
-                <span class="flex items-center gap-1.5">
-                  <User :size="13" class="text-slate-400" />
-                  {{ expense.vendor || 'Direct Purchase' }}
-                </span>
-              </td>
+                <!-- Category Badge -->
+                <td class="py-3.5 px-5 whitespace-nowrap">
+                  <span
+                    class="inline-block text-xs font-semibold px-2.5 py-0.5 rounded-md border"
+                    :class="getCategoryColor(expense.category)"
+                  >
+                    {{ expense.category }}
+                  </span>
+                </td>
 
-              <!-- Category Badge -->
-              <td class="py-3.5 px-5 whitespace-nowrap">
-                <span
-                  class="inline-block text-xs font-semibold px-2.5 py-0.5 rounded-md border"
-                  :class="getCategoryColor(expense.category)"
-                >
-                  {{ expense.category }}
-                </span>
-              </td>
+                <!-- Payment Method -->
+                <td class="py-3.5 px-5 text-xs text-slate-600 whitespace-nowrap">
+                  <span class="flex items-center gap-1.5">
+                    <CreditCard :size="13" class="text-slate-400" />
+                    {{ expense.paymentMethod }}
+                  </span>
+                </td>
 
-              <!-- Payment Method -->
-              <td class="py-3.5 px-5 text-xs text-slate-600 whitespace-nowrap">
-                <span class="flex items-center gap-1.5">
-                  <CreditCard :size="13" class="text-slate-400" />
-                  {{ expense.paymentMethod }}
-                </span>
-              </td>
+                <!-- Receipt Slip Button -->
+                <td class="py-3.5 px-5 whitespace-nowrap">
+                  <button
+                    v-if="expense.hasReceipt"
+                    type="button"
+                    @click="openReceiptModal(expense)"
+                    class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 transition cursor-pointer"
+                    title="View attached receipt slip"
+                  >
+                    <Paperclip :size="12" />
+                    <span>View Proof</span>
+                  </button>
+                  <span v-else class="text-xs text-slate-400 font-normal">
+                    No Slip
+                  </span>
+                </td>
 
-              <!-- Receipt Slip Button -->
-              <td class="py-3.5 px-5 whitespace-nowrap">
-                <button
-                  v-if="expense.hasReceipt"
-                  type="button"
-                  @click="openReceiptModal(expense)"
-                  class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 transition cursor-pointer"
-                  title="View attached receipt slip"
-                >
-                  <Paperclip :size="12" />
-                  <span>View Proof</span>
-                </button>
-                <span v-else class="text-xs text-slate-400 font-normal">
-                  No Slip
-                </span>
-              </td>
-
-              <!-- Status Badge -->
-              <td class="py-3.5 px-5 whitespace-nowrap">
-                <span
-                  :class="[
-                    'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full',
-                    expense.status === 'Paid'
-                      ? 'bg-emerald-50 text-emerald-700'
-                      : 'bg-amber-50 text-amber-700 border border-amber-200/60',
-                  ]"
-                >
+                <!-- Status Badge -->
+                <td class="py-3.5 px-5 whitespace-nowrap">
                   <span
                     :class="[
-                      'w-1.5 h-1.5 rounded-full',
-                      expense.status === 'Paid' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse',
+                      'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full',
+                      expense.status === 'Paid'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'bg-amber-50 text-amber-700 border border-amber-200/60',
                     ]"
-                  ></span>
-                  {{ expense.status }}
-                </span>
-              </td>
-
-              <!-- Date -->
-              <td class="py-3.5 px-5 text-xs text-slate-500 whitespace-nowrap">
-                <span class="flex items-center gap-1.5">
-                  <Calendar :size="13" class="text-slate-400" />
-                  {{ expense.date }}
-                </span>
-              </td>
-
-              <!-- Amount -->
-              <td class="py-3.5 px-5 text-right font-extrabold text-slate-900 whitespace-nowrap text-sm">
-                {{ formatCurrency(expense.amount) }}
-              </td>
-
-              <!-- Actions: Edit & Delete -->
-              <td class="py-3.5 px-5 text-center whitespace-nowrap">
-                <div class="flex items-center justify-center gap-1">
-                  <button
-                    type="button"
-                    @click="openEditModal(expense)"
-                    class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition cursor-pointer"
-                    title="Edit record"
                   >
-                    <Edit2 :size="14" />
-                  </button>
-                  <button
-                    type="button"
-                    @click="promptDeleteExpense(expense)"
-                    class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                    title="Delete record"
-                  >
-                    <Trash2 :size="14" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                    <span
+                      :class="[
+                        'w-1.5 h-1.5 rounded-full',
+                        expense.status === 'Paid' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse',
+                      ]"
+                    ></span>
+                    {{ expense.status }}
+                  </span>
+                </td>
 
-        <!-- Empty State for Filter or Empty Project -->
-        <div
-          v-else
-          class="p-12 text-center flex flex-col items-center justify-center space-y-2 text-slate-500"
-        >
-          <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 mb-1">
-            <Receipt :size="20" />
+                <!-- Date -->
+                <td class="py-3.5 px-5 text-xs text-slate-500 whitespace-nowrap">
+                  <span class="flex items-center gap-1.5">
+                    <Calendar :size="13" class="text-slate-400" />
+                    {{ expense.date }}
+                  </span>
+                </td>
+
+                <!-- Amount -->
+                <td class="py-3.5 px-5 text-right font-extrabold text-slate-900 whitespace-nowrap text-sm">
+                  {{ formatCurrency(expense.amount) }}
+                </td>
+
+                <!-- Actions: Print, Edit & Delete -->
+                <td class="py-3.5 px-5 text-center whitespace-nowrap">
+                  <div class="flex items-center justify-center gap-1">
+                    <button
+                      type="button"
+                      @click="printExpenseVoucher(expense)"
+                      class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                      title="Print payment voucher"
+                    >
+                      <Printer :size="14" />
+                    </button>
+                    <button
+                      type="button"
+                      @click="openEditModal(expense)"
+                      class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition cursor-pointer"
+                      title="Edit record"
+                    >
+                      <Edit2 :size="14" />
+                    </button>
+                    <button
+                      type="button"
+                      @click="promptDeleteExpense(expense)"
+                      class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                      title="Delete record"
+                    >
+                      <Trash2 :size="14" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Empty State for Filter or Empty Project -->
+          <div v-else class="p-8">
+            <EmptyState
+              :icon="Receipt"
+              title="No payment records found"
+              :description="`No payment records found for ${activeProject?.name || 'this project'} matching the active filters. Click 'Add New Payment' to record a new transaction voucher.`"
+              actionText="Add New Payment"
+              @action="openAddModal"
+            />
           </div>
-          <p class="font-bold text-slate-800 text-sm">No payment records found</p>
-          <p class="text-xs max-w-sm">
-            Is project ({{ activeProject?.name }}) mein koi payments match nahi hui. "Add New Payment" button par click karke naya voucher record karein.
-          </p>
         </div>
-      </div>
 
-      <!-- Table Footer / Count info -->
-      <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-        <div class="flex items-center gap-3">
-          <span>Showing {{ filteredExpenses.length }} of {{ activeExpenses.length }} entries</span>
-          <span class="inline-block w-1 h-1 rounded-full bg-slate-300"></span>
-          <span class="text-emerald-600 font-medium flex items-center gap-1">
-            <CheckCircle2 :size="13" /> Ledger Total: {{ formatCurrency(totalExpenseAmount) }}
-          </span>
-        </div>
-        <div>
+        <!-- Table Summary Status Banner -->
+        <div
+          v-if="props.expenses?.meta?.total > 0"
+          class="px-5 py-2.5 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500"
+        >
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-emerald-700 font-semibold flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-md">
+              <CheckCircle2 :size="13" class="text-emerald-600" />
+              <span>Active Outflow Total: {{ formatCurrency(props.filterStats.filteredOutflow) }}</span>
+            </span>
+            <span class="text-slate-400">({{ props.expenses.meta.total }} total matching records)</span>
+          </div>
           <button
             @click="exportCSV"
+            :disabled="isExporting"
             type="button"
-            class="text-indigo-600 font-semibold hover:text-indigo-700 hover:underline flex items-center gap-1.5 cursor-pointer"
+            class="text-indigo-600 font-semibold hover:text-indigo-700 hover:underline flex items-center gap-1.5 cursor-pointer text-xs disabled:opacity-50"
           >
             <Download :size="13" />
-            <span>Export Spreadsheet (.csv)</span>
+            <span>{{ isExporting ? 'Exporting...' : 'Export All to CSV' }}</span>
           </button>
         </div>
+
+        <!-- Reusable Pagination Component -->
+        <Pagination
+          v-if="props.expenses?.meta?.total > 0"
+          :currentPage="props.expenses.meta.currentPage"
+          :pageSize="props.expenses.meta.perPage"
+          :totalItems="props.expenses.meta.total"
+          @update:currentPage="(page) => fetchFilteredExpenses(page)"
+          @update:pageSize="(limit) => { pageSize = limit; fetchFilteredExpenses(1); }"
+          @change="handlePageChange"
+        />
       </div>
-    </div>
     </template>
 
     <!-- Reusable Add/Edit Expense Modal -->
@@ -689,5 +1053,8 @@ const getCategoryColor = (category) => {
       :receipt="selectedReceipt"
       @close="isReceiptModalOpen = false"
     />
+
+    <!-- Standalone Printable Voucher (Direct row print without opening modal) -->
+    <VoucherSlip v-if="voucherToPrint" :voucher="voucherToPrint" />
   </AppLayout>
 </template>

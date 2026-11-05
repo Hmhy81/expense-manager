@@ -1,5 +1,6 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import Setting from '#models/setting'
+import ProjectService from '#services/project_service'
 
 export default class ProjectsController {
   /**
@@ -7,39 +8,14 @@ export default class ProjectsController {
    */
   async index({ auth, request, inertia }: HttpContext) {
     const user = auth.user!
-    const projects = await user
-      .related('projects')
-      .query()
-      .preload('expenses')
-      .orderBy('created_at', 'desc')
+    const projectsData = await ProjectService.getUserProjectsWithStats(user.id)
 
     let activeProjectId = request.input('projectId') ? Number(request.input('projectId')) : null
-    if (!activeProjectId && projects.length > 0) {
-      activeProjectId = projects[0].id
+    if (!activeProjectId && projectsData.length > 0) {
+      activeProjectId = projectsData[0].id
     }
 
     const { globalSettings, projectSettingsMap } = await Setting.getUserSettings(user.id)
-
-    const projectsData = projects.map((proj) => {
-      const expenses = proj.expenses || []
-      const totalSpent = expenses.reduce((acc, curr) => acc + Number(curr.amount || 0), 0)
-      const receiptsCount = expenses.filter((e) => Boolean(e.receiptUrl || e.receiptName)).length
-      return {
-        id: proj.id,
-        name: proj.name,
-        type: proj.type || 'Construction',
-        location: proj.location || '',
-        targetBudget: proj.targetBudget ? Number(proj.targetBudget) : null,
-        startDate: proj.startDate || '',
-        status: proj.status || 'Active',
-        description: proj.description || '',
-        totalSpent,
-        entriesCount: expenses.length,
-        receiptsCount,
-        createdAt: proj.createdAt.toISO(),
-      }
-    })
-
     const activeProject = projectsData.find((p) => p.id === activeProjectId) || projectsData[0] || null
 
     return inertia.render('Projects/Index', {

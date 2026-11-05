@@ -5,9 +5,11 @@ import AppLayout from '~/components/AppLayout.vue'
 import StatCard from '~/components/StatCard.vue'
 import ProjectModal from '~/components/ProjectModal.vue'
 import ConfirmModal from '~/components/ConfirmModal.vue'
+import EmptyState from '~/components/EmptyState.vue'
+import BudgetProgressBar from '~/components/BudgetProgressBar.vue'
 import { useActiveProject } from '~/composables/useActiveProject'
 import { useSettings } from '~/composables/useSettings'
-import { FolderKanban, Plus, Search, Filter, Receipt, CheckCircle2, Calendar, MapPin, TrendingUp, Clock, ArrowRight, Edit2, Trash2, Sparkles, Check } from 'lucide-vue-next'
+import { FolderKanban, Plus, Search, Receipt, CheckCircle2, MapPin, TrendingUp, ArrowRight, Edit2, Trash2, Sparkles, Check } from 'lucide-vue-next'
 
 const {
   projectsWithStats,
@@ -48,7 +50,7 @@ const filteredProjects = computed(() => {
   })
 })
 
-// Overall Metrics across all projects
+// Overall Metrics across all projects (Utilizing the SQL pre-aggregated stats in projectsWithStats)
 const totalPortfoliosCount = computed(() => projectsWithStats.value.length)
 const totalSpentSum = computed(() => {
   return projectsWithStats.value.reduce((acc, curr) => acc + (curr.totalSpent || 0), 0)
@@ -274,7 +276,7 @@ const openProjectLedger = (proj) => {
           </p>
         </div>
 
-        <!-- Budget & Spend Tracking Block -->
+        <!-- Budget & Spend Tracking Block (Reusable Component) -->
         <div class="px-5 py-3.5 bg-slate-50/70 border-t border-b border-slate-100 space-y-2">
           <div class="flex items-center justify-between text-xs">
             <span class="text-slate-500 font-medium">Recorded Outflow:</span>
@@ -283,29 +285,11 @@ const openProjectLedger = (proj) => {
             </span>
           </div>
 
-          <!-- If project has target budget -->
-          <div v-if="proj.targetBudget && proj.targetBudget > 0" class="space-y-1.5">
-            <div class="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-              <div
-                class="h-full bg-indigo-600 rounded-full transition-all duration-500"
-                :style="{
-                  width: `${Math.min(Math.round(((proj.totalSpent || 0) / proj.targetBudget) * 100), 100)}%`,
-                }"
-              ></div>
-            </div>
-            <div class="flex items-center justify-between text-[11px] text-slate-500">
-              <span>Budget: {{ formatCurrency(proj.targetBudget) }}</span>
-              <span class="font-semibold text-indigo-700">
-                {{ Math.round(((proj.totalSpent || 0) / proj.targetBudget) * 100) }}% spent
-              </span>
-            </div>
-          </div>
-
-          <!-- If open/untracked budget -->
-          <div v-else class="flex items-center gap-1.5 text-[11px] font-semibold text-purple-700 bg-purple-50/80 px-2.5 py-1 rounded-lg border border-purple-200/50">
-            <Sparkles :size="13" class="text-purple-600 shrink-0" />
-            <span>Open Budget (Spend as you go)</span>
-          </div>
+          <BudgetProgressBar
+            :spent="proj.totalSpent"
+            :budget="proj.targetBudget"
+            compact
+          />
         </div>
 
         <!-- Card Footer -->
@@ -336,25 +320,15 @@ const openProjectLedger = (proj) => {
     </div>
 
     <!-- EMPTY STATE -->
-    <div
-      v-else
-      class="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center flex flex-col items-center justify-center space-y-3"
-    >
-      <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-        <FolderKanban :size="24" />
-      </div>
-      <h3 class="font-bold text-slate-900 text-base">No project portfolios found</h3>
-      <p class="text-xs sm:text-sm text-slate-500 max-w-sm">
-        No projects found. Create your first project portfolio to start recording vouchers and managing budgets.
-      </p>
-      <button
-        type="button"
-        @click="openCreateModal"
-        class="mt-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
-      >
-        <Plus :size="14" />
-        <span>Create Project Ledger</span>
-      </button>
+    <div v-else class="p-8">
+      <EmptyState
+        :icon="FolderKanban"
+        title="No project portfolios found"
+        description="No projects found matching the active filter. Create a new project portfolio to start recording vouchers and managing budgets."
+        actionText="Create Project Ledger"
+        @action="openCreateModal"
+        dashed
+      />
     </div>
 
     <!-- Reusable Project Modal -->
