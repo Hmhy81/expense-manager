@@ -4,22 +4,44 @@ import Expense from '#models/expense'
 
 export default class ProjectService {
   /**
-   * Get all projects for a user with aggregated statistics directly from MySQL
-   * Avoids preloading all expenses into RAM!
+   * Get all projects with aggregated statistics directly from MySQL
+   * Superadmin & Admin see all projects across the system, while regular users see only their own.
    */
-  static async getUserProjectsWithStats(userId: number) {
-    const projects = await Project.query()
-      .where('userId', userId)
-      .orderBy('createdAt', 'desc')
+  static async getUserProjectsWithStats(
+    userOrId: { id: number; role?: string } | number,
+    filterUserId?: number | null
+  ) {
+    let userId: number
+    let role = 'user'
+
+    if (typeof userOrId === 'number') {
+      userId = userOrId
+    } else {
+      userId = userOrId.id
+      role = userOrId.role || 'user'
+    }
+
+    const isStaff = role === 'superadmin' || role === 'admin'
+    const projectsQuery = Project.query().preload('user').orderBy('createdAt', 'desc')
+
+    if (!isStaff) {
+      projectsQuery.where('userId', userId)
+    } else if (filterUserId) {
+      projectsQuery.where('userId', filterUserId)
+    }
+
+    const projects = await projectsQuery
 
     if (projects.length === 0) {
       return []
     }
 
-    // Run a single grouped aggregation query for all user's projects
+    const projectIds = projects.map((p) => p.id)
+
+    // Run a single grouped aggregation query for these projects
     const statsRows = await db
       .from('expenses')
-      .where('user_id', userId)
+      .whereIn('project_id', projectIds)
       .select('project_id')
       .count('* as entries_count')
       .sum('amount as total_spent')
@@ -43,6 +65,9 @@ export default class ProjectService {
       const stats = statsMap.get(proj.id) || { totalSpent: 0, entriesCount: 0, receiptsCount: 0 }
       return {
         id: proj.id,
+        userId: proj.userId,
+        ownerName: proj.user?.fullName || proj.user?.email || 'Unknown User',
+        ownerEmail: proj.user?.email || '',
         name: proj.name,
         type: proj.type || 'Construction',
         location: proj.location || '',
@@ -56,6 +81,23 @@ export default class ProjectService {
         createdAt: proj.createdAt ? proj.createdAt.toISO() : null,
       }
     })
+  }
+
+  /**
+   * Get simple list of users (for Superadmin/Admin filtering)
+   */
+  static async getUsersListForFilter() {
+    const users = await db
+      .from('users')
+      .select('id', 'full_name', 'email', 'role')
+      .orderBy('full_name', 'asc')
+
+    return users.map((u) => ({
+      id: u.id,
+      name: u.full_name || u.email,
+      email: u.email,
+      role: u.role || 'user',
+    }))
   }
 
   /**
@@ -101,9 +143,20 @@ export default class ProjectService {
   }
 
   /**
-   * Get category breakdown grouped and summed in MySQL for dashboard visualization
+   * Get category distribution breakdown directly from MySQL
    */
   static async getCategoryDistribution(projectId: number) {
+    const totalRow = await db
+      .from('expenses')
+      .where('project_id', projectId)
+      .sum('amount as grand_total')
+      .first()
+
+    const grandTotal = Number(totalRow?.grand_total || 0)
+    if (grandTotal === 0) {
+      return []
+    }
+
     const rows = await db
       .from('expenses')
       .where('project_id', projectId)
@@ -111,9 +164,6 @@ export default class ProjectService {
       .sum('amount as total_amount')
       .groupBy('category')
       .orderBy('total_amount', 'desc')
-
-    const grandTotal = rows.reduce((acc, curr) => acc + Number(curr.total_amount || 0), 0)
-    if (grandTotal === 0) return []
 
     const colorPalette = [
       'bg-indigo-600',
@@ -124,31 +174,31 @@ export default class ProjectService {
       'bg-rose-500',
     ]
 
-    return rows.map((r, idx) => {
-      const amount = Number(r.total_amount || 0)
-      const percent = Math.round((amount / grandTotal) * 100)
+    return rows.map((r, index) => {
+      const rawAmount = Number(r.total_amount || 0)
+      const percent = Math.round((rawAmount / grandTotal) * 100)
       return {
-        name: r.category,
-        amount,
-        rawAmount: amount,
+        name: r.category || 'General',
+        rawAmount,
+        amount: `Rs. ${rawAmount.toLocaleString()}`,
         percent,
-        color: colorPalette[idx % colorPalette.length],
+        color: colorPalette[index % colorPalette.length],
       }
     })
   }
 
   /**
-   * Get top 5 recent expenses for Dashboard without pulling full table
+   * Get latest recent expenses for active project
    */
-  static async getRecentExpenses(projectId: number, limit = 5) {
-    const list = await Expense.query()
+  static async getRecentExpenses(projectId: number, limit: number = 5) {
+    const expenses = await Expense.query()
       .where('projectId', projectId)
       .orderBy('date', 'desc')
+      .orderBy('id', 'desc')
       .limit(limit)
 
-    return list.map((e) => ({
+    return expenses.map((e) => ({
       id: e.id,
-      projectId: e.projectId,
       title: e.title,
       vendor: e.vendor || '',
       category: e.category,
@@ -163,4 +213,3 @@ export default class ProjectService {
     }))
   }
 }
-

@@ -3,6 +3,7 @@ import app from '@adonisjs/core/services/app'
 import db from '@adonisjs/lucid/services/db'
 import { randomUUID } from 'node:crypto'
 import Expense from '#models/expense'
+import Project from '#models/project'
 import Setting from '#models/setting'
 import ProjectService from '#services/project_service'
 
@@ -100,7 +101,11 @@ export default class ExpensesController {
    */
   async index({ auth, request, response, inertia }: HttpContext) {
     const user = auth.user!
-    const projectsData = await ProjectService.getUserProjectsWithStats(user.id)
+    const isStaff = user.role === 'superadmin' || user.role === 'admin'
+    const filterUserId = request.input('filterUserId') ? Number(request.input('filterUserId')) : null
+
+    const projectsData = await ProjectService.getUserProjectsWithStats(user, filterUserId)
+    const usersList = isStaff ? await ProjectService.getUsersListForFilter() : []
 
     let activeProjectId = request.input('projectId') ? Number(request.input('projectId')) : null
     if (!activeProjectId && projectsData.length > 0) {
@@ -258,6 +263,10 @@ export default class ExpensesController {
       projects: projectsData,
       activeProjectId,
       activeProject,
+      usersList,
+      filterUserId,
+      isSuperAdmin: user.role === 'superadmin',
+      isAdmin: user.role === 'admin',
       expenses: paginatedExpenses,
       filterStats,
       filters: {
@@ -312,7 +321,12 @@ export default class ExpensesController {
       receiptName = receiptFile.clientName
     }
 
-    const newExpense = await user.related('expenses').create({
+    const isStaff = user.role === 'superadmin' || user.role === 'admin'
+    const project = await Project.findOrFail(Number(data.projectId))
+    const ownerUserId = isStaff ? project.userId : user.id
+
+    const newExpense = await Expense.create({
+      userId: ownerUserId,
       projectId: Number(data.projectId),
       title: data.title?.trim(),
       vendor: data.vendor?.trim() || null,
@@ -334,11 +348,13 @@ export default class ExpensesController {
    */
   async update({ auth, params, request, response }: HttpContext) {
     const user = auth.user!
-    const expense = await user
-      .related('expenses')
-      .query()
-      .where('id', params.id)
-      .firstOrFail()
+    const isStaff = user.role === 'superadmin' || user.role === 'admin'
+
+    const expenseQuery = Expense.query().where('id', params.id)
+    if (!isStaff) {
+      expenseQuery.where('userId', user.id)
+    }
+    const expense = await expenseQuery.firstOrFail()
 
     const data = request.only([
       'title',
@@ -393,11 +409,13 @@ export default class ExpensesController {
    */
   async destroy({ auth, params, response }: HttpContext) {
     const user = auth.user!
-    const expense = await user
-      .related('expenses')
-      .query()
-      .where('id', params.id)
-      .firstOrFail()
+    const isStaff = user.role === 'superadmin' || user.role === 'admin'
+
+    const expenseQuery = Expense.query().where('id', params.id)
+    if (!isStaff) {
+      expenseQuery.where('userId', user.id)
+    }
+    const expense = await expenseQuery.firstOrFail()
 
     const projectId = expense.projectId
     await expense.delete()

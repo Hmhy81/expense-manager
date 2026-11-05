@@ -1,8 +1,16 @@
 <script setup>
-import { Head, Link } from '@inertiajs/vue3'
+import { computed } from 'vue'
+import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import AppLogo from '~/components/AppLogo.vue'
 import AppToaster from '~/components/AppToaster.vue'
 import { ArrowRight, TrendingUp, PieChart, Zap, Lock, Receipt, CheckCircle2 } from 'lucide-vue-next'
+
+const page = usePage()
+const currentUser = computed(() => page.props.user)
+
+const logout = () => {
+  router.post('/logout')
+}
 
 const features = [
   {
@@ -47,7 +55,23 @@ const features = [
           <a href="#security" class="hover:text-indigo-600 transition-colors">Security</a>
         </nav>
 
-        <div class="flex items-center gap-3">
+        <div v-if="currentUser" class="flex items-center gap-3">
+          <Link
+            href="/dashboard"
+            class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 sm:px-4 py-2 rounded-xl shadow-xs transition"
+          >
+            <span>Dashboard</span>
+            <ArrowRight :size="15" />
+          </Link>
+          <button
+            @click="logout"
+            type="button"
+            class="text-xs font-semibold text-rose-600 hover:bg-rose-50 px-3 py-2 rounded-xl border border-rose-200 transition cursor-pointer"
+          >
+            Sign Out
+          </button>
+        </div>
+        <div v-else class="flex items-center gap-3">
           <Link
             href="/login"
             class="text-sm font-semibold text-slate-700 hover:text-indigo-600 px-4 py-2 rounded-xl hover:bg-slate-100 transition"
@@ -83,7 +107,23 @@ const features = [
         </p>
 
         <!-- CTA Buttons -->
-        <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <div v-if="currentUser" class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <Link
+            href="/dashboard"
+            class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-7 py-3.5 rounded-2xl shadow-md shadow-indigo-600/20 transition hover:-translate-y-0.5"
+          >
+            <span>Open Dashboard</span>
+            <ArrowRight :size="18" />
+          </Link>
+          <button
+            @click="logout"
+            type="button"
+            class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-semibold px-7 py-3.5 rounded-2xl shadow-xs transition cursor-pointer"
+          >
+            <span>Switch Account / Sign Out</span>
+          </button>
+        </div>
+        <div v-else class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
             href="/signup"
             class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-7 py-3.5 rounded-2xl shadow-md shadow-indigo-600/20 transition hover:-translate-y-0.5"

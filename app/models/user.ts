@@ -2,13 +2,22 @@ import { UserSchema } from '#database/schema'
 import hash from '@adonisjs/core/services/hash'
 import { compose } from '@adonisjs/core/helpers'
 import { withAuthFinder } from '@adonisjs/auth/mixins/lucid'
-import { hasMany } from '@adonisjs/lucid/orm'
+import { hasMany, column } from '@adonisjs/lucid/orm'
 import type { HasMany } from '@adonisjs/lucid/types/relations'
 import Project from '#models/project'
 import Expense from '#models/expense'
 import Setting from '#models/setting'
 
 export default class User extends compose(UserSchema, withAuthFinder(hash)) {
+  @column()
+  declare role: string
+
+  @column()
+  declare status: boolean
+
+  @column()
+  declare phone: string | null
+
   @hasMany(() => Project)
   declare projects: HasMany<typeof Project>
 
@@ -17,6 +26,18 @@ export default class User extends compose(UserSchema, withAuthFinder(hash)) {
 
   @hasMany(() => Setting)
   declare settings: HasMany<typeof Setting>
+
+  get isSuperAdmin() {
+    return this.role === 'superadmin'
+  }
+
+  get isAdmin() {
+    return this.role === 'admin'
+  }
+
+  get isStaffOrAdmin() {
+    return this.role === 'superadmin' || this.role === 'admin'
+  }
 
   get initials() {
     const [first, last] = this.fullName ? this.fullName.split(' ') : this.email.split('@')

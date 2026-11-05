@@ -5,6 +5,7 @@ import { createInertiaApp } from '@inertiajs/vue3'
 import { TuyauProvider } from '@adonisjs/inertia/vue'
 import { createApp, type DefineComponent, h } from 'vue'
 import { resolvePageComponent } from '@adonisjs/inertia/helpers'
+// @ts-ignore
 import { initTheme } from '~/composables/useSettings'
 
 initTheme()

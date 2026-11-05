@@ -9,7 +9,26 @@ import EmptyState from '~/components/EmptyState.vue'
 import BudgetProgressBar from '~/components/BudgetProgressBar.vue'
 import { useActiveProject } from '~/composables/useActiveProject'
 import { useSettings } from '~/composables/useSettings'
-import { FolderKanban, Plus, Search, Receipt, CheckCircle2, MapPin, TrendingUp, ArrowRight, Edit2, Trash2, Sparkles, Check } from 'lucide-vue-next'
+import { FolderKanban, Plus, Search, Receipt, CheckCircle2, MapPin, TrendingUp, ArrowRight, Edit2, Trash2, Sparkles, Check, User } from 'lucide-vue-next'
+
+const props = defineProps({
+  usersList: {
+    type: Array,
+    default: () => [],
+  },
+  filterUserId: {
+    type: [Number, String],
+    default: null,
+  },
+  isSuperAdmin: {
+    type: Boolean,
+    default: false,
+  },
+  isAdmin: {
+    type: Boolean,
+    default: false,
+  },
+})
 
 const {
   projectsWithStats,
@@ -26,6 +45,18 @@ const { formatCurrency } = useSettings()
 const searchQuery = ref('')
 const selectedType = ref('All')
 const selectedStatus = ref('All')
+const selectedUserId = ref(props.filterUserId || '')
+
+const handleUserFilterChange = () => {
+  const query = {}
+  if (selectedUserId.value) {
+    query.filterUserId = selectedUserId.value
+  }
+  router.get('/projects', query, {
+    preserveState: true,
+    preserveScroll: true,
+  })
+}
 
 // Modals State
 const isProjectModalOpen = ref(false)
@@ -175,7 +206,20 @@ const openProjectLedger = (proj) => {
         />
       </div>
 
-      <div class="flex items-center gap-2.5 w-full md:w-auto">
+      <div class="flex items-center gap-2.5 w-full md:w-auto flex-wrap">
+        <!-- Admin System User Filter -->
+        <select
+          v-if="props.usersList?.length > 0"
+          v-model="selectedUserId"
+          @change="handleUserFilterChange"
+          class="px-3 py-2 text-xs font-semibold bg-purple-50 hover:bg-purple-100/70 border border-purple-200 text-purple-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition cursor-pointer"
+        >
+          <option value="">All Users (System-wide)</option>
+          <option v-for="u in props.usersList" :key="u.id" :value="u.id">
+            {{ u.name }} ({{ u.role }})
+          </option>
+        </select>
+
         <!-- Type Filter -->
         <select
           v-model="selectedType"
@@ -267,6 +311,10 @@ const openProjectLedger = (proj) => {
           <h3 class="font-bold text-base text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-1">
             {{ proj.name }}
           </h3>
+          <p v-if="(props.isSuperAdmin || props.isAdmin) && proj.ownerName" class="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
+            <span class="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200/80 font-bold text-[10px]">Owner</span>
+            <span class="truncate">{{ proj.ownerName }}</span>
+          </p>
           <p v-if="proj.location" class="text-xs text-slate-500 mt-1 flex items-center gap-1.5 truncate">
             <MapPin :size="13" class="text-slate-400 shrink-0" />
             <span class="truncate">{{ proj.location }}</span>

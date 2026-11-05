@@ -14,6 +14,12 @@ const routes = {
     tokens: [[0,"/"]],
     types: placeholder as Registry['home']['types'],
   },
+  'session.destroy.get': {
+    methods: ["GET","HEAD"],
+    pattern: '/logout',
+    tokens: [[0,"logout"]],
+    types: placeholder as Registry['session.destroy.get']['types'],
+  },
   'new_account.create': {
     methods: ["GET","HEAD"],
     pattern: '/signup',

@@ -11,8 +11,9 @@ import { middleware } from '#start/kernel'
 import { controllers } from '#generated/controllers'
 import router from '@adonisjs/core/services/router'
 
-// 1. Landing / Home page
+// 1. Landing / Home page & Global Logout
 router.on('/').renderInertia('Home', {}).as('home')
+router.get('logout', [controllers.Session, 'destroy']).as('session.destroy.get')
 
 // 2. Guest Authentication routes (/signup, /login)
 router

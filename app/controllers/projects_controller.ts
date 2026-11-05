@@ -1,14 +1,19 @@
 import type { HttpContext } from '@adonisjs/core/http'
+import Project from '#models/project'
 import Setting from '#models/setting'
 import ProjectService from '#services/project_service'
 
 export default class ProjectsController {
   /**
-   * Display a list of all projects belonging to the logged-in user
+   * Display a list of all projects belonging to the user (or all projects for superadmin/admin)
    */
   async index({ auth, request, inertia }: HttpContext) {
     const user = auth.user!
-    const projectsData = await ProjectService.getUserProjectsWithStats(user.id)
+    const isStaff = user.role === 'superadmin' || user.role === 'admin'
+    const filterUserId = request.input('filterUserId') ? Number(request.input('filterUserId')) : null
+
+    const projectsData = await ProjectService.getUserProjectsWithStats(user, filterUserId)
+    const usersList = isStaff ? await ProjectService.getUsersListForFilter() : []
 
     let activeProjectId = request.input('projectId') ? Number(request.input('projectId')) : null
     if (!activeProjectId && projectsData.length > 0) {
@@ -22,6 +27,10 @@ export default class ProjectsController {
       projects: projectsData,
       activeProjectId,
       activeProject,
+      usersList,
+      filterUserId,
+      isSuperAdmin: user.role === 'superadmin',
+      isAdmin: user.role === 'admin',
       globalSettings,
       projectSettingsMap,
     })
@@ -32,6 +41,7 @@ export default class ProjectsController {
    */
   async store({ auth, request, response }: HttpContext) {
     const user = auth.user!
+    const isStaff = user.role === 'superadmin' || user.role === 'admin'
     const data = request.only([
       'name',
       'type',
@@ -40,9 +50,13 @@ export default class ProjectsController {
       'startDate',
       'status',
       'description',
+      'userId',
     ])
 
-    await user.related('projects').create({
+    const targetUserId = (isStaff && data.userId) ? Number(data.userId) : user.id
+
+    await Project.create({
+      userId: targetUserId,
       name: data.name?.trim(),
       type: data.type || 'Construction',
       location: data.location?.trim() || null,
@@ -60,11 +74,13 @@ export default class ProjectsController {
    */
   async update({ auth, params, request, response }: HttpContext) {
     const user = auth.user!
-    const project = await user
-      .related('projects')
-      .query()
-      .where('id', params.id)
-      .firstOrFail()
+    const isStaff = user.role === 'superadmin' || user.role === 'admin'
+
+    const projectQuery = Project.query().where('id', params.id)
+    if (!isStaff) {
+      projectQuery.where('userId', user.id)
+    }
+    const project = await projectQuery.firstOrFail()
 
     const data = request.only([
       'name',
@@ -74,6 +90,7 @@ export default class ProjectsController {
       'startDate',
       'status',
       'description',
+      'userId',
     ])
 
     project.merge({
@@ -84,6 +101,7 @@ export default class ProjectsController {
       startDate: data.startDate ?? project.startDate,
       status: data.status || project.status,
       description: data.description?.trim() ?? project.description,
+      userId: (isStaff && data.userId) ? Number(data.userId) : project.userId,
     })
 
     await project.save()
@@ -96,11 +114,13 @@ export default class ProjectsController {
    */
   async destroy({ auth, params, response }: HttpContext) {
     const user = auth.user!
-    const project = await user
-      .related('projects')
-      .query()
-      .where('id', params.id)
-      .firstOrFail()
+    const isStaff = user.role === 'superadmin' || user.role === 'admin'
+
+    const projectQuery = Project.query().where('id', params.id)
+    if (!isStaff) {
+      projectQuery.where('userId', user.id)
+    }
+    const project = await projectQuery.firstOrFail()
 
     await project.delete()
 

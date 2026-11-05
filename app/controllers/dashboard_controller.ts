@@ -5,7 +5,11 @@ import ProjectService from '#services/project_service'
 export default class DashboardController {
   async index({ auth, request, inertia }: HttpContext) {
     const user = auth.user!
-    const projectsData = await ProjectService.getUserProjectsWithStats(user.id)
+    const isStaff = user.role === 'superadmin' || user.role === 'admin'
+    const filterUserId = request.input('filterUserId') ? Number(request.input('filterUserId')) : null
+
+    const projectsData = await ProjectService.getUserProjectsWithStats(user, filterUserId)
+    const usersList = isStaff ? await ProjectService.getUsersListForFilter() : []
 
     let activeProjectId = request.input('projectId') ? Number(request.input('projectId')) : null
     if (!activeProjectId && projectsData.length > 0) {
@@ -42,7 +46,10 @@ export default class DashboardController {
       activeExpenses: recentExpenses,
       globalSettings,
       projectSettingsMap,
+      usersList,
+      filterUserId,
+      isSuperAdmin: user.role === 'superadmin',
+      isAdmin: user.role === 'admin',
     })
   }
 }
-

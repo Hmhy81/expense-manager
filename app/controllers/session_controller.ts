@@ -12,11 +12,18 @@ export default class SessionController {
     const user = await User.verifyCredentials(email, password)
 
     await auth.use('web').login(user)
-    response.redirect().toRoute('dashboard')
+    return response.redirect().toRoute('dashboard')
   }
 
-  async destroy({ auth, response }: HttpContext) {
-    await auth.use('web').logout()
-    response.redirect().toPath('/login')
+  async destroy({ auth, session, response }: HttpContext) {
+    try {
+      if (await auth.use('web').check()) {
+        await auth.use('web').logout()
+      }
+    } catch {
+      // Ignore if session already destroyed
+    }
+    session.clear()
+    return response.redirect().toPath('/login')
   }
 }

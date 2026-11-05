@@ -38,6 +38,22 @@ const props = defineProps({
       endDate: '',
     }),
   },
+  usersList: {
+    type: Array,
+    default: () => [],
+  },
+  filterUserId: {
+    type: [Number, String],
+    default: null,
+  },
+  isSuperAdmin: {
+    type: Boolean,
+    default: false,
+  },
+  isAdmin: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const {
@@ -62,6 +78,12 @@ const filterWithReceipt = ref(props.filters?.receipt || 'all') // 'all', 'with_r
 const dateRangeOption = ref(props.filters?.dateRange || 'all')
 const customStartDate = ref(props.filters?.startDate || '')
 const customEndDate = ref(props.filters?.endDate || '')
+const selectedUserId = ref(props.filterUserId || '')
+
+const handleUserFilterChange = () => {
+  currentPage.value = 1
+  fetchFilteredExpenses(1)
+}
 
 // Pagination State
 const currentPage = ref(props.expenses?.meta?.currentPage || 1)
@@ -173,6 +195,10 @@ const fetchFilteredExpenses = (page = 1) => {
     projectId: activeProject.value?.id,
     page,
     limit: pageSize.value,
+  }
+
+  if (selectedUserId.value) {
+    queryParams.filterUserId = selectedUserId.value
   }
 
   if (searchQuery.value?.trim()) {
@@ -322,6 +348,7 @@ const openReceiptModal = (expense) => {
 async function fetchAllFilteredExpensesForExport() {
   const params = new URLSearchParams()
   params.append('export', 'json')
+  if (selectedUserId.value) params.append('filterUserId', String(selectedUserId.value))
   if (activeProject.value?.id) params.append('projectId', String(activeProject.value.id))
   if (searchQuery.value?.trim()) params.append('search', searchQuery.value.trim())
   if (selectedCategory.value && selectedCategory.value !== 'All') params.append('category', selectedCategory.value)
@@ -603,6 +630,20 @@ const getCategoryColor = (category) => {
   >
     <!-- Top Action Slot -->
     <template #actions>
+      <!-- Admin User Filter -->
+      <div v-if="props.usersList?.length > 0" class="flex items-center gap-1.5">
+        <select
+          v-model="selectedUserId"
+          @change="handleUserFilterChange"
+          class="px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-purple-50 hover:bg-purple-100/80 border border-purple-200 text-purple-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition cursor-pointer"
+        >
+          <option value="">All Users (System)</option>
+          <option v-for="u in props.usersList" :key="u.id" :value="u.id">
+            {{ u.name }} ({{ u.role }})
+          </option>
+        </select>
+      </div>
+
       <template v-if="activeProject">
         <button
           @click="exportCSV"

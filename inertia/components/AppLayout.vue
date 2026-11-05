@@ -45,6 +45,7 @@ const currentUser = computed(() => {
   return {
     fullName: 'Finance Manager',
     email: 'finance@expensepro.com',
+    role: 'user',
   }
 })
 
@@ -205,6 +206,9 @@ const logout = () => {
                 <div class="flex items-center gap-2 truncate">
                   <component :is="proj.icon" :size="14" class="shrink-0" />
                   <span class="truncate">{{ proj.name }}</span>
+                  <span v-if="(currentUser.role === 'superadmin' || currentUser.role === 'admin') && proj.ownerName" class="text-[10px] text-slate-400 font-normal shrink-0 truncate max-w-[90px]">
+                    ({{ proj.ownerName }})
+                  </span>
                 </div>
                 <span v-if="activeProject?.id === proj.id" class="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0"></span>
               </button>
@@ -308,7 +312,16 @@ const logout = () => {
           </div>
           <div class="mt-2.5 flex items-center justify-between pt-2 border-t border-slate-200/60 text-[10px]">
             <span class="text-slate-500 font-medium">Account Role:</span>
-            <span class="font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">Finance Admin</span>
+            <span
+              :class="[
+                'font-bold px-2 py-0.5 rounded-md capitalize',
+                currentUser.role === 'superadmin' ? 'bg-purple-100 text-purple-800 border border-purple-200' :
+                currentUser.role === 'admin' ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' :
+                'bg-slate-100 text-slate-700'
+              ]"
+            >
+              {{ currentUser.role === 'superadmin' ? 'Super Admin' : (currentUser.role === 'admin' ? 'Admin' : 'User') }}
+            </span>
           </div>
         </div>
 

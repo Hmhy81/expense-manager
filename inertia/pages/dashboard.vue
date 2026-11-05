@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import { Head, Link } from '@inertiajs/vue3'
+import { Head, Link, router } from '@inertiajs/vue3'
 import AppLayout from '~/components/AppLayout.vue'
 import StatCard from '~/components/StatCard.vue'
 import ExpenseModal from '~/components/ExpenseModal.vue'
@@ -11,6 +11,25 @@ import { useActiveProject } from '~/composables/useActiveProject'
 import { useSettings } from '~/composables/useSettings'
 import { Wallet, Receipt, FileText, AlertCircle, Plus, ArrowRight, PieChart, User, Paperclip, Sparkles, FolderKanban } from 'lucide-vue-next'
 
+const props = defineProps({
+  usersList: {
+    type: Array,
+    default: () => [],
+  },
+  filterUserId: {
+    type: [Number, String],
+    default: null,
+  },
+  isSuperAdmin: {
+    type: Boolean,
+    default: false,
+  },
+  isAdmin: {
+    type: Boolean,
+    default: false,
+  },
+})
+
 const {
   activeProject,
   activeExpenses,
@@ -20,6 +39,19 @@ const {
   addExpense,
 } = useActiveProject()
 const { formatCurrency } = useSettings()
+
+const selectedUserId = ref(props.filterUserId || '')
+
+const handleUserFilterChange = () => {
+  const query = {}
+  if (selectedUserId.value) {
+    query.filterUserId = selectedUserId.value
+  }
+  router.get('/dashboard', query, {
+    preserveState: true,
+    preserveScroll: true,
+  })
+}
 
 // Modal states
 const isAddModalOpen = ref(false)
@@ -58,6 +90,20 @@ const handleSaveExpense = (newExpense) => {
   >
     <!-- Top Action Slot -->
     <template #actions>
+      <!-- Admin User Filter -->
+      <div v-if="props.usersList?.length > 0" class="flex items-center gap-1.5">
+        <select
+          v-model="selectedUserId"
+          @change="handleUserFilterChange"
+          class="px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-purple-50 hover:bg-purple-100/80 border border-purple-200 text-purple-900 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition cursor-pointer"
+        >
+          <option value="">All Users (System)</option>
+          <option v-for="u in props.usersList" :key="u.id" :value="u.id">
+            {{ u.name }} ({{ u.role }})
+          </option>
+        </select>
+      </div>
+
       <button
         v-if="activeProject"
         type="button"
