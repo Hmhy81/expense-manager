@@ -322,7 +322,11 @@ export default class ExpensesController {
     }
 
     const isStaff = user.role === 'superadmin' || user.role === 'admin'
-    const project = await Project.findOrFail(Number(data.projectId))
+    const projectQuery = Project.query().where('id', Number(data.projectId))
+    if (!isStaff) {
+      projectQuery.where('userId', user.id)
+    }
+    const project = await projectQuery.firstOrFail()
     const ownerUserId = isStaff ? project.userId : user.id
 
     const newExpense = await Expense.create({

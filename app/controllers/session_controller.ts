@@ -7,9 +7,14 @@ export default class SessionController {
     return inertia.render('Auth/Login', {})
   }
 
-  async store({ request, auth, response }: HttpContext) {
+  async store({ request, auth, response, session }: HttpContext) {
     const { email, password } = await request.validateUsing(loginValidator)
     const user = await User.verifyCredentials(email, password)
+
+    if (user.status === false) {
+      session.flash('error', 'Your account has been deactivated. Please contact an administrator.')
+      return response.redirect().toPath('/login')
+    }
 
     await auth.use('web').login(user)
     return response.redirect().toRoute('dashboard')
