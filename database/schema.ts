@@ -8,7 +8,7 @@ import { BaseModel, column } from '@adonisjs/lucid/orm'
 import { DateTime } from 'luxon'
 
 export class ExpenseSchema extends BaseModel {
-  static $columns = ['amount', 'category', 'createdAt', 'date', 'id', 'notes', 'paymentMethod', 'projectId', 'receiptName', 'receiptUrl', 'status', 'title', 'updatedAt', 'userId', 'vendor'] as const
+  static $columns = ['amount', 'category', 'createdAt', 'date', 'id', 'notes', 'paymentMethod', 'projectId', 'status', 'title', 'updatedAt', 'userId', 'vendor'] as const
   $columns = ExpenseSchema.$columns
   @column()
   declare amount: string
@@ -27,10 +27,6 @@ export class ExpenseSchema extends BaseModel {
   @column()
   declare projectId: number
   @column()
-  declare receiptName: string | null
-  @column()
-  declare receiptUrl: string | null
-  @column()
   declare status: string | null
   @column()
   declare title: string
@@ -40,6 +36,33 @@ export class ExpenseSchema extends BaseModel {
   declare userId: number
   @column()
   declare vendor: string | null
+}
+
+export class ExpenseDocumentSchema extends BaseModel {
+  static $columns = ['createdAt', 'documentType', 'expenseId', 'fileName', 'filePath', 'fileSize', 'fileType', 'id', 'projectId', 'updatedAt', 'userId'] as const
+  $columns = ExpenseDocumentSchema.$columns
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+  @column()
+  declare documentType: string | null
+  @column()
+  declare expenseId: number
+  @column()
+  declare fileName: string
+  @column()
+  declare filePath: string
+  @column()
+  declare fileSize: bigint | number | null
+  @column()
+  declare fileType: string | null
+  @column({ isPrimary: true })
+  declare id: number
+  @column()
+  declare projectId: number
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime | null
+  @column()
+  declare userId: number
 }
 
 export class ProjectSchema extends BaseModel {

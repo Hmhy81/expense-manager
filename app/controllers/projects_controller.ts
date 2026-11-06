@@ -1,7 +1,23 @@
 import type { HttpContext } from '@adonisjs/core/http'
+import app from '@adonisjs/core/services/app'
+import fs from 'node:fs'
 import Project from '#models/project'
+import ExpenseDocument from '#models/expense_document'
 import Setting from '#models/setting'
 import ProjectService from '#services/project_service'
+
+function deletePhysicalFile(filePath?: string | null) {
+  if (!filePath) return
+  try {
+    const cleanPath = filePath.replace(/^\//, '')
+    const fullPath = app.makePath('public', cleanPath)
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath)
+    }
+  } catch (err) {
+    console.error('Failed to remove physical file:', err)
+  }
+}
 
 export default class ProjectsController {
   /**
@@ -122,6 +138,13 @@ export default class ProjectsController {
     }
     const project = await projectQuery.firstOrFail()
 
+    // 1. Delete physical files from disk for all documents in this project
+    const docs = await ExpenseDocument.query().where('projectId', project.id)
+    for (const doc of docs) {
+      deletePhysicalFile(doc.filePath)
+    }
+
+    // 2. Delete project (CASCADE removes expenses and documents from DB)
     await project.delete()
 
     return response.redirect().toPath('/projects')

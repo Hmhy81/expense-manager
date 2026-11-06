@@ -15,8 +15,6 @@ export default class extends BaseSchema {
       table.string('date', 50).notNullable()
       table.string('payment_method', 100).defaultTo('Cash')
       table.string('status', 50).defaultTo('Paid')
-      table.text('receipt_url').nullable()
-      table.string('receipt_name', 255).nullable()
       table.text('notes').nullable()
 
       table.timestamp('created_at').notNullable()

@@ -60,15 +60,18 @@ const isReceiptModalOpen = ref(false)
 
 const openReceipt = (expense) => {
   selectedReceipt.value = {
+    id: expense.id,
     title: expense.title,
     vendor: expense.vendor,
     category: expense.category,
     amount: expense.amount,
     date: expense.date,
     paymentMethod: expense.paymentMethod,
+    status: expense.status,
     notes: expense.notes,
     receiptUrl: expense.receiptUrl || '',
     receiptName: expense.receiptName,
+    receipts: expense.receipts || (expense.receiptUrl ? [{ url: expense.receiptUrl, name: expense.receiptName || 'Receipt Slip' }] : []),
   }
   isReceiptModalOpen.value = true
 }
@@ -157,7 +160,7 @@ const handleSaveExpense = (newExpense) => {
 
         <StatCard
           title="Verified Proofs"
-          :value="`${activeStats.receiptsCount} Documents`"
+          :value="`${activeStats.totalDocuments !== undefined ? activeStats.totalDocuments : activeStats.receiptsCount} Documents`"
           subtitle="Verified slips & receipts attached"
           :icon="FileText"
           color="purple"
@@ -271,7 +274,7 @@ const handleSaveExpense = (newExpense) => {
               <div class="p-3 bg-slate-50 rounded-xl border border-slate-100">
                 <span class="text-slate-400 block mb-0.5">Proof Slips Ratio</span>
                 <span class="font-bold text-emerald-700 text-sm">
-                  {{ activeStats.totalCount > 0 ? Math.round((activeStats.receiptsCount / activeStats.totalCount) * 100) : 0 }}% payments have slips
+                  {{ activeStats.totalCount > 0 ? Math.min(100, Math.round((activeStats.receiptsCount / activeStats.totalCount) * 100)) : 0 }}% payments have slips
                 </span>
               </div>
             </div>
@@ -344,10 +347,10 @@ const handleSaveExpense = (newExpense) => {
                     type="button"
                     @click="openReceipt(expense)"
                     class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 transition cursor-pointer"
-                    title="View attached receipt slip"
+                    title="View attached receipt slip(s)"
                   >
                     <Paperclip :size="12" />
-                    <span>View Slip</span>
+                    <span>{{ (expense.receipts && expense.receipts.length > 1) ? `${expense.receipts.length} Proofs` : 'View Slip' }}</span>
                   </button>
                   <span v-else class="text-xs text-slate-400 font-normal">
                     No slip

@@ -1,7 +1,7 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import Modal from '~/components/Modal.vue'
-import { UploadCloud, FileText, X, Trash2, Paperclip, Eye } from 'lucide-vue-next'
+import { UploadCloud, FileText, X, Trash2, Paperclip, Plus, Eye, Image as ImageIcon } from 'lucide-vue-next'
 import { useSettings } from '~/composables/useSettings'
 import { useToast } from '~/composables/useToast'
 
@@ -36,6 +36,9 @@ const emit = defineEmits(['close', 'save'])
 const { effectiveSettings } = useSettings()
 const toast = useToast()
 
+const fileInputRef = ref(null)
+const isDraggingOver = ref(false)
+
 const defaultForm = () => ({
   title: '',
   category: props.categories[0] || 'Raw Materials',
@@ -44,13 +47,22 @@ const defaultForm = () => ({
   date: new Date().toISOString().split('T')[0],
   paymentMethod: 'Cash',
   status: 'Paid',
-  receiptUrl: '',
-  receiptName: '',
-  receiptFile: null,
   notes: '',
 })
 
 const form = ref(defaultForm())
+const existingReceipts = ref([])
+const newReceipts = ref([])
+
+const totalReceiptsCount = computed(() => existingReceipts.value.length + newReceipts.value.length)
+
+const formatFileSize = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
+}
 
 watch(
   () => props.expense,
@@ -64,13 +76,27 @@ watch(
         date: newVal.date || new Date().toISOString().split('T')[0],
         paymentMethod: newVal.paymentMethod || 'Cash',
         status: newVal.status || 'Paid',
-        receiptUrl: newVal.receiptUrl || '',
-        receiptName: newVal.receiptName || '',
-        receiptFile: null,
         notes: newVal.notes || '',
       }
+
+      if (Array.isArray(newVal.receipts) && newVal.receipts.length > 0) {
+        existingReceipts.value = [...newVal.receipts]
+      } else if (newVal.receiptUrl) {
+        existingReceipts.value = [
+          {
+            url: newVal.receiptUrl,
+            name: newVal.receiptName || 'Receipt Slip',
+            type: newVal.receiptUrl.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
+          },
+        ]
+      } else {
+        existingReceipts.value = []
+      }
+      newReceipts.value = []
     } else {
       form.value = defaultForm()
+      existingReceipts.value = []
+      newReceipts.value = []
     }
   },
   { immediate: true }
@@ -81,28 +107,70 @@ watch(
   (isShown) => {
     if (isShown && props.mode === 'add') {
       form.value = defaultForm()
+      existingReceipts.value = []
+      newReceipts.value = []
     }
   }
 )
 
-const handleFileUpload = (e) => {
-  const file = e.target.files?.[0]
-  if (file) {
-    form.value.receiptName = file.name
-    form.value.receiptFile = file
-    // Read file as base64 Data URL for instant, permanent picture preview
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      form.value.receiptUrl = event.target.result
+const processSelectedFiles = (fileList) => {
+  if (!fileList || fileList.length === 0) return
+
+  const filesArray = Array.from(fileList)
+  for (const file of filesArray) {
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+    const item = {
+      file,
+      name: file.name,
+      size: formatFileSize(file.size),
+      type: isPdf ? 'pdf' : 'image',
+      previewUrl: '',
     }
-    reader.readAsDataURL(file)
+
+    if (!isPdf && file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        item.previewUrl = e.target.result
+      }
+      reader.readAsDataURL(file)
+    }
+
+    newReceipts.value.push(item)
+  }
+
+  // Clear file input so same file can be selected again if needed
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
   }
 }
 
-const removeReceipt = () => {
-  form.value.receiptName = ''
-  form.value.receiptUrl = ''
-  form.value.receiptFile = null
+const handleFileUpload = (e) => {
+  processSelectedFiles(e.target.files)
+}
+
+const handleDrop = (e) => {
+  isDraggingOver.value = false
+  if (e.dataTransfer?.files) {
+    processSelectedFiles(e.dataTransfer.files)
+  }
+}
+
+const triggerFileInput = () => {
+  fileInputRef.value?.click()
+}
+
+const removeExistingReceipt = (index) => {
+  existingReceipts.value.splice(index, 1)
+}
+
+const removeNewReceipt = (index) => {
+  newReceipts.value.splice(index, 1)
+}
+
+const clearAllReceipts = () => {
+  existingReceipts.value = []
+  newReceipts.value = []
+  if (fileInputRef.value) fileInputRef.value.value = ''
 }
 
 const handleSubmit = () => {
@@ -118,6 +186,8 @@ const handleSubmit = () => {
   emit('save', {
     ...form.value,
     amount: Number(form.value.amount),
+    existingReceipts: existingReceipts.value,
+    receiptFiles: newReceipts.value.map((item) => item.file),
   })
 }
 </script>
@@ -231,72 +301,147 @@ const handleSubmit = () => {
         </div>
       </div>
 
-      <!-- Optional Receipt / Document Upload with LIVE PICTURE VIEW -->
+      <!-- MULTIPLE RECEIPTS / PROOFS UPLOAD SECTION -->
       <div>
-        <label class="block text-xs font-semibold text-slate-700 mb-1">
-          Attach Receipt, Invoice or Slip Picture <span class="text-xs text-slate-400 font-normal">(100% Optional)</span>
-        </label>
-
-        <!-- Live Picture Preview if selected -->
-        <div
-          v-if="form.receiptUrl || form.receiptName"
-          class="space-y-2"
-        >
-          <div class="relative rounded-xl border border-slate-200 overflow-hidden bg-slate-100 max-h-48 flex items-center justify-center p-2 group">
-            <img
-              v-if="form.receiptUrl"
-              :src="form.receiptUrl"
-              alt="Receipt Preview"
-              class="max-h-44 object-contain rounded-lg shadow-xs"
-            />
-            <div
-              v-else
-              class="p-4 text-center text-xs text-slate-500 flex flex-col items-center gap-1.5"
-            >
-              <Paperclip :size="24" class="text-indigo-600" />
-              <span class="font-semibold text-slate-800">{{ form.receiptName }}</span>
-            </div>
-
-            <!-- Hover overlay with Remove button -->
-            <div class="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-              <button
-                type="button"
-                @click="removeReceipt"
-                class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <Trash2 :size="14" />
-                <span>Remove Picture</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="flex items-center justify-between text-xs text-slate-500 px-1">
-            <span class="truncate font-medium text-slate-700 max-w-[260px]">{{ form.receiptName || 'Receipt Picture Attached' }}</span>
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="block text-xs font-semibold text-slate-700">
+            Attach Receipts, Invoices or Slips
+            <span class="text-xs text-slate-400 font-normal">(Multiple files supported)</span>
+          </label>
+          <div v-if="totalReceiptsCount > 0" class="flex items-center gap-2">
             <button
               type="button"
-              @click="removeReceipt"
-              class="text-rose-600 hover:text-rose-700 font-semibold hover:underline cursor-pointer"
+              @click="triggerFileInput"
+              class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md transition cursor-pointer"
             >
-              Remove
+              <Plus :size="12" />
+              <span>Add More</span>
+            </button>
+            <button
+              type="button"
+              @click="clearAllReceipts"
+              class="text-[11px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+            >
+              Clear All
             </button>
           </div>
         </div>
 
-        <!-- Upload Dropzone -->
-        <label
+        <!-- Hidden multi-file input -->
+        <input
+          ref="fileInputRef"
+          type="file"
+          multiple
+          accept="image/*,.pdf"
+          class="hidden"
+          @change="handleFileUpload"
+        />
+
+        <!-- Staged Receipts Preview Gallery -->
+        <div v-if="totalReceiptsCount > 0" class="space-y-2">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto pr-1">
+            <!-- 1. Existing Receipts (Server-side) -->
+            <div
+              v-for="(item, idx) in existingReceipts"
+              :key="'existing-' + idx"
+              class="relative flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-200 rounded-xl group hover:border-slate-300 transition"
+            >
+              <!-- Thumbnail -->
+              <div class="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-slate-200 flex items-center justify-center">
+                <img
+                  v-if="item.url && item.type !== 'pdf'"
+                  :src="item.url"
+                  :alt="item.name"
+                  class="w-full h-full object-cover"
+                />
+                <FileText v-else :size="18" class="text-rose-600" />
+              </div>
+
+              <!-- Name & Badge -->
+              <div class="min-w-0 flex-1">
+                <p class="text-xs font-semibold text-slate-800 truncate" :title="item.name">
+                  {{ item.name || 'Receipt Document' }}
+                </p>
+                <span class="text-[10px] text-emerald-600 font-medium">Saved Proof</span>
+              </div>
+
+              <!-- Delete Button -->
+              <button
+                type="button"
+                @click="removeExistingReceipt(idx)"
+                class="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                title="Remove this receipt"
+              >
+                <X :size="14" />
+              </button>
+            </div>
+
+            <!-- 2. Newly Added Receipts (Client-side) -->
+            <div
+              v-for="(item, idx) in newReceipts"
+              :key="'new-' + idx"
+              class="relative flex items-center gap-2.5 p-2 bg-indigo-50/50 border border-indigo-100 rounded-xl group hover:border-indigo-200 transition"
+            >
+              <!-- Thumbnail -->
+              <div class="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white border border-indigo-100 flex items-center justify-center">
+                <img
+                  v-if="item.previewUrl"
+                  :src="item.previewUrl"
+                  :alt="item.name"
+                  class="w-full h-full object-cover"
+                />
+                <FileText v-else-if="item.type === 'pdf'" :size="18" class="text-rose-600" />
+                <ImageIcon v-else :size="18" class="text-indigo-500" />
+              </div>
+
+              <!-- Name & Size -->
+              <div class="min-w-0 flex-1">
+                <p class="text-xs font-semibold text-slate-800 truncate" :title="item.name">
+                  {{ item.name }}
+                </p>
+                <span class="text-[10px] text-indigo-600 font-medium">{{ item.size }} &bull; Ready to upload</span>
+              </div>
+
+              <!-- Delete Button -->
+              <button
+                type="button"
+                @click="removeNewReceipt(idx)"
+                class="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                title="Remove this file"
+              >
+                <X :size="14" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Quick Drop / Add More Area -->
+          <div
+            @click="triggerFileInput"
+            @dragover.prevent="isDraggingOver = true"
+            @dragleave.prevent="isDraggingOver = false"
+            @drop.prevent="handleDrop"
+            :class="isDraggingOver ? 'border-indigo-500 bg-indigo-50/50' : 'border-slate-200 hover:border-indigo-300 bg-slate-50/50'"
+            class="border border-dashed rounded-xl py-2 px-3 flex items-center justify-center gap-2 cursor-pointer transition text-center"
+          >
+            <Plus :size="14" class="text-indigo-600" />
+            <span class="text-xs font-medium text-slate-600">Click or drag more files to attach</span>
+          </div>
+        </div>
+
+        <!-- Empty State Dropzone -->
+        <div
           v-else
-          class="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/70 hover:bg-indigo-50/30 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition text-center group"
+          @click="triggerFileInput"
+          @dragover.prevent="isDraggingOver = true"
+          @dragleave.prevent="isDraggingOver = false"
+          @drop.prevent="handleDrop"
+          :class="isDraggingOver ? 'border-indigo-500 bg-indigo-50/60 scale-[0.99]' : 'border-slate-200 hover:border-indigo-400 bg-slate-50/70 hover:bg-indigo-50/30'"
+          class="border-2 border-dashed rounded-xl p-4 sm:p-5 flex flex-col items-center justify-center cursor-pointer transition text-center group"
         >
-          <UploadCloud :size="24" class="text-slate-400 group-hover:text-indigo-600 mb-1.5 transition-colors" />
-          <span class="text-xs font-semibold text-slate-700">Click to upload bill / receipt picture</span>
-          <span class="text-[11px] text-slate-400 mt-0.5">PNG, JPG, WebP, PDF (or leave blank if no slip)</span>
-          <input
-            type="file"
-            accept="image/*,.pdf"
-            class="hidden"
-            @change="handleFileUpload"
-          />
-        </label>
+          <UploadCloud :size="26" class="text-slate-400 group-hover:text-indigo-600 mb-1.5 transition-colors" />
+          <span class="text-xs font-semibold text-slate-700">Click to upload bill, receipt, or slip pictures</span>
+          <span class="text-[11px] text-slate-400 mt-0.5">Attach multiple JPG, PNG, WebP, or PDF files (Up to 10MB each)</span>
+        </div>
       </div>
 
       <!-- Notes / Specifics -->

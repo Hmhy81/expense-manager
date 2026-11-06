@@ -87,7 +87,7 @@ const totalSpentSum = computed(() => {
   return projectsWithStats.value.reduce((acc, curr) => acc + (curr.totalSpent || 0), 0)
 })
 const totalReceiptsSum = computed(() => {
-  return projectsWithStats.value.reduce((acc, curr) => acc + (curr.receiptsCount || 0), 0)
+  return projectsWithStats.value.reduce((acc, curr) => acc + (curr.totalDocuments || curr.receiptsCount || 0), 0)
 })
 const openBudgetCount = computed(() => {
   return projectsWithStats.value.filter((p) => !p.targetBudget).length
@@ -350,7 +350,7 @@ const openProjectLedger = (proj) => {
             <span>&bull;</span>
             <span class="flex items-center gap-1 text-emerald-600 font-medium">
               <CheckCircle2 :size="13" />
-              {{ proj.receiptsCount || 0 }} proofs
+              {{ proj.totalDocuments !== undefined ? proj.totalDocuments : (proj.receiptsCount || 0) }} proofs
             </span>
           </div>
 

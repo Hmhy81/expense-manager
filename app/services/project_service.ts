@@ -45,24 +45,38 @@ export default class ProjectService {
       .select('project_id')
       .count('* as entries_count')
       .sum('amount as total_spent')
-      .select(
-        db.raw(
-          'COUNT(CASE WHEN receipt_url IS NOT NULL AND receipt_url != "" THEN 1 WHEN receipt_name IS NOT NULL AND receipt_name != "" THEN 1 ELSE NULL END) as receipts_count'
-        )
-      )
       .groupBy('project_id')
 
-    const statsMap = new Map<number, { totalSpent: number; entriesCount: number; receiptsCount: number }>()
+    const docStatsRows = await db
+      .from('expense_documents')
+      .whereIn('project_id', projectIds)
+      .select('project_id')
+      .count('* as total_documents')
+      .countDistinct('expense_id as receipts_count')
+      .groupBy('project_id')
+
+    const docStatsMap = new Map<number, { receiptsCount: number; totalDocuments: number }>()
+    for (const r of docStatsRows) {
+      docStatsMap.set(Number(r.project_id), {
+        receiptsCount: Number(r.receipts_count || 0),
+        totalDocuments: Number(r.total_documents || 0),
+      })
+    }
+
+    const statsMap = new Map<number, { totalSpent: number; entriesCount: number; receiptsCount: number; totalDocuments: number }>()
     for (const row of statsRows) {
-      statsMap.set(Number(row.project_id), {
+      const pid = Number(row.project_id)
+      const docStat = docStatsMap.get(pid) || { receiptsCount: 0, totalDocuments: 0 }
+      statsMap.set(pid, {
         totalSpent: Number(row.total_spent || 0),
         entriesCount: Number(row.entries_count || 0),
-        receiptsCount: Number(row.receipts_count || 0),
+        receiptsCount: docStat.receiptsCount,
+        totalDocuments: docStat.totalDocuments,
       })
     }
 
     return projects.map((proj) => {
-      const stats = statsMap.get(proj.id) || { totalSpent: 0, entriesCount: 0, receiptsCount: 0 }
+      const stats = statsMap.get(proj.id) || { totalSpent: 0, entriesCount: 0, receiptsCount: 0, totalDocuments: 0 }
       return {
         id: proj.id,
         userId: proj.userId,
@@ -78,6 +92,7 @@ export default class ProjectService {
         totalSpent: stats.totalSpent,
         entriesCount: stats.entriesCount,
         receiptsCount: stats.receiptsCount,
+        totalDocuments: stats.totalDocuments,
         createdAt: proj.createdAt ? proj.createdAt.toISO() : null,
       }
     })
@@ -111,10 +126,16 @@ export default class ProjectService {
         db.raw('COALESCE(SUM(amount), 0) as grand_total'),
         db.raw('COALESCE(SUM(CASE WHEN status != "Pending" THEN amount ELSE 0 END), 0) as total_spent'),
         db.raw('COALESCE(SUM(CASE WHEN status = "Pending" THEN amount ELSE 0 END), 0) as pending_total'),
-        db.raw('COUNT(*) as total_count'),
-        db.raw(
-          'COUNT(CASE WHEN receipt_url IS NOT NULL AND receipt_url != "" THEN 1 WHEN receipt_name IS NOT NULL AND receipt_name != "" THEN 1 ELSE NULL END) as receipts_count'
-        )
+        db.raw('COUNT(*) as total_count')
+      )
+      .first()
+
+    const docRow = await db
+      .from('expense_documents')
+      .where('project_id', projectId)
+      .select(
+        db.raw('COUNT(DISTINCT expense_id) as receipts_count'),
+        db.raw('COUNT(*) as total_documents')
       )
       .first()
 
@@ -124,7 +145,8 @@ export default class ProjectService {
     const totalSpent = Number(row?.total_spent || 0)
     const pendingTotal = Number(row?.pending_total || 0)
     const totalCount = Number(row?.total_count || 0)
-    const receiptsCount = Number(row?.receipts_count || 0)
+    const receiptsCount = Number(docRow?.receipts_count || 0)
+    const totalDocuments = Number(docRow?.total_documents || 0)
 
     const budgetPercent =
       targetBudget && targetBudget > 0
@@ -137,6 +159,7 @@ export default class ProjectService {
       pendingTotal,
       totalCount,
       receiptsCount,
+      totalDocuments,
       targetBudget,
       budgetPercent,
     }
@@ -193,23 +216,37 @@ export default class ProjectService {
   static async getRecentExpenses(projectId: number, limit: number = 5) {
     const expenses = await Expense.query()
       .where('projectId', projectId)
+      .preload('documents')
       .orderBy('date', 'desc')
       .orderBy('id', 'desc')
       .limit(limit)
 
-    return expenses.map((e) => ({
-      id: e.id,
-      title: e.title,
-      vendor: e.vendor || '',
-      category: e.category,
-      amount: Number(e.amount),
-      date: e.date,
-      paymentMethod: e.paymentMethod || 'Cash',
-      status: e.status || 'Paid',
-      receiptUrl: e.receiptUrl || '',
-      receiptName: e.receiptName || '',
-      notes: e.notes || '',
-      hasReceipt: Boolean(e.receiptUrl || e.receiptName),
-    }))
+    return expenses.map((e) => {
+      const docs = (e.documents || []).map((d) => ({
+        id: d.id,
+        url: d.filePath,
+        name: d.fileName,
+        type: d.fileType?.includes('pdf') || d.filePath.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
+        size: d.fileSize ? Number(d.fileSize) : null,
+        documentType: d.documentType || 'receipt',
+      }))
+
+      return {
+        id: e.id,
+        title: e.title,
+        vendor: e.vendor || '',
+        category: e.category,
+        amount: Number(e.amount),
+        date: e.date,
+        paymentMethod: e.paymentMethod || 'Cash',
+        status: e.status || 'Paid',
+        receipts: docs,
+        receiptsCount: docs.length,
+        receiptUrl: docs[0]?.url || '',
+        receiptName: docs[0]?.name || '',
+        notes: e.notes || '',
+        hasReceipt: docs.length > 0,
+      }
+    })
   }
 }

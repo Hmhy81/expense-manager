@@ -193,9 +193,20 @@ export function useActiveProject() {
     if (expenseData.vendor) formData.append('vendor', expenseData.vendor)
     if (expenseData.notes) formData.append('notes', expenseData.notes)
 
-    if (expenseData.receiptFile) {
+    // Multiple receipts support
+    if (Array.isArray(expenseData.receiptFiles) && expenseData.receiptFiles.length > 0) {
+      expenseData.receiptFiles.forEach((file) => {
+        formData.append('receipts', file)
+      })
+    } else if (expenseData.receiptFile) {
       formData.append('receipt', expenseData.receiptFile)
-    } else if (expenseData.receiptUrl) {
+    }
+
+    if (expenseData.existingReceipts) {
+      formData.append('existingReceipts', JSON.stringify(expenseData.existingReceipts))
+    }
+
+    if (expenseData.receiptUrl) {
       formData.append('receiptUrl', expenseData.receiptUrl)
       if (expenseData.receiptName) formData.append('receiptName', expenseData.receiptName)
     }
@@ -219,9 +230,20 @@ export function useActiveProject() {
     if (expenseData.vendor) formData.append('vendor', expenseData.vendor)
     if (expenseData.notes) formData.append('notes', expenseData.notes)
 
-    if (expenseData.receiptFile) {
+    // Multiple receipts support
+    if (Array.isArray(expenseData.receiptFiles) && expenseData.receiptFiles.length > 0) {
+      expenseData.receiptFiles.forEach((file) => {
+        formData.append('receipts', file)
+      })
+    } else if (expenseData.receiptFile) {
       formData.append('receipt', expenseData.receiptFile)
-    } else if (expenseData.receiptUrl) {
+    }
+
+    if (expenseData.existingReceipts !== undefined) {
+      formData.append('existingReceipts', JSON.stringify(expenseData.existingReceipts))
+    }
+
+    if (expenseData.receiptUrl) {
       formData.append('receiptUrl', expenseData.receiptUrl)
       if (expenseData.receiptName) formData.append('receiptName', expenseData.receiptName)
     }

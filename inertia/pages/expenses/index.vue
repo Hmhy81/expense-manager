@@ -340,6 +340,7 @@ const openReceiptModal = (expense) => {
     notes: expense.notes,
     receiptUrl: expense.receiptUrl || '',
     receiptName: expense.receiptName,
+    receipts: expense.receipts || (expense.receiptUrl ? [{ url: expense.receiptUrl, name: expense.receiptName || 'Receipt Slip' }] : []),
   }
   isReceiptModalOpen.value = true
 }
@@ -941,11 +942,11 @@ const getCategoryColor = (category) => {
                     v-if="expense.hasReceipt"
                     type="button"
                     @click="openReceiptModal(expense)"
-                    class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 transition cursor-pointer"
-                    title="View attached receipt slip"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 transition cursor-pointer"
+                    title="View attached receipt slip(s)"
                   >
                     <Paperclip :size="12" />
-                    <span>View Proof</span>
+                    <span>{{ (expense.receipts && expense.receipts.length > 1) ? `${expense.receipts.length} Proofs` : 'View Proof' }}</span>
                   </button>
                   <span v-else class="text-xs text-slate-400 font-normal">
                     No Slip

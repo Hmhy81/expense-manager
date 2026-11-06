@@ -2,10 +2,28 @@ import type { HttpContext } from '@adonisjs/core/http'
 import app from '@adonisjs/core/services/app'
 import db from '@adonisjs/lucid/services/db'
 import { randomUUID } from 'node:crypto'
+import fs from 'node:fs'
 import Expense from '#models/expense'
+import ExpenseDocument from '#models/expense_document'
 import Project from '#models/project'
 import Setting from '#models/setting'
 import ProjectService from '#services/project_service'
+
+/**
+ * Safely delete a physical file from the public uploads directory
+ */
+function deletePhysicalFile(filePath?: string | null) {
+  if (!filePath) return
+  try {
+    const cleanPath = filePath.replace(/^\//, '')
+    const fullPath = app.makePath('public', cleanPath)
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath)
+    }
+  } catch (err) {
+    console.error('Failed to remove physical file:', err)
+  }
+}
 
 function resolveDateBounds(range: string, customStart?: string, customEnd?: string) {
   const now = new Date()
@@ -71,20 +89,13 @@ function applyDbFilters(
   }
 
   if (filters.receipt === 'with_receipt') {
-    query.where((q: any) => {
-      q.whereNotNull('receipt_url')
-        .andWhere('receipt_url', '!=', '')
-        .orWhereNotNull('receipt_name')
-        .andWhere('receipt_name', '!=', '')
+    query.whereExists((sub: any) => {
+      sub.from('expense_documents').whereRaw('expense_documents.expense_id = expenses.id')
     })
   } else if (filters.receipt === 'without_receipt') {
-    query
-      .where((q: any) => {
-        q.whereNull('receipt_url').orWhere('receipt_url', '=', '')
-      })
-      .where((q: any) => {
-        q.whereNull('receipt_name').orWhere('receipt_name', '=', '')
-      })
+    query.whereNotExists((sub: any) => {
+      sub.from('expense_documents').whereRaw('expense_documents.expense_id = expenses.id')
+    })
   }
 
   if (filters.startDate) {
@@ -141,19 +152,45 @@ export default class ExpensesController {
       const exportQuery = db.from('expenses')
       applyDbFilters(exportQuery, filterCriteria)
       const rows = await exportQuery.orderBy('date', 'desc').orderBy('id', 'desc')
+      const expenseIds = rows.map((r) => r.id)
+
+      const docRows =
+        expenseIds.length > 0
+          ? await db.from('expense_documents').whereIn('expense_id', expenseIds).orderBy('id', 'asc')
+          : []
+
+      const docsByExpense = new Map<number, any[]>()
+      for (const d of docRows) {
+        const list = docsByExpense.get(d.expense_id) || []
+        list.push({
+          id: d.id,
+          url: d.file_path,
+          name: d.file_name,
+          type: d.file_type?.includes('pdf') || d.file_path.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
+          size: d.file_size ? Number(d.file_size) : null,
+          documentType: d.document_type || 'receipt',
+        })
+        docsByExpense.set(d.expense_id, list)
+      }
+
       return response.json(
-        rows.map((e) => ({
-          id: e.id,
-          title: e.title,
-          vendor: e.vendor || '',
-          category: e.category,
-          amount: Number(e.amount),
-          date: e.date,
-          paymentMethod: e.payment_method || 'Cash',
-          status: e.status || 'Paid',
-          notes: e.notes || '',
-          hasReceipt: Boolean(e.receipt_url || e.receipt_name),
-        }))
+        rows.map((e) => {
+          const docs = docsByExpense.get(e.id) || []
+          return {
+            id: e.id,
+            title: e.title,
+            vendor: e.vendor || '',
+            category: e.category,
+            amount: Number(e.amount),
+            date: e.date,
+            paymentMethod: e.payment_method || 'Cash',
+            status: e.status || 'Paid',
+            notes: e.notes || '',
+            receipts: docs,
+            receiptsCount: docs.length,
+            hasReceipt: docs.length > 0,
+          }
+        })
       )
     }
 
@@ -185,7 +222,7 @@ export default class ExpensesController {
       }
     }
 
-    // 2. Paginated expenses query
+    // 2. Paginated expenses query preloading documents
     let paginatedExpenses = {
       data: [] as any[],
       meta: {
@@ -211,45 +248,52 @@ export default class ExpensesController {
         expenseQuery.where('category', category)
       }
       if (receipt === 'with_receipt') {
-        expenseQuery.where((q) => {
-          q.whereNotNull('receiptUrl')
-            .andWhere('receiptUrl', '!=', '')
-            .orWhereNotNull('receiptName')
-            .andWhere('receiptName', '!=', '')
+        expenseQuery.whereExists((sub) => {
+          sub.from('expense_documents').whereRaw('expense_documents.expense_id = expenses.id')
         })
       } else if (receipt === 'without_receipt') {
-        expenseQuery
-          .where((q) => {
-            q.whereNull('receiptUrl').orWhere('receiptUrl', '=', '')
-          })
-          .where((q) => {
-            q.whereNull('receiptName').orWhere('receiptName', '=', '')
-          })
+        expenseQuery.whereNotExists((sub) => {
+          sub.from('expense_documents').whereRaw('expense_documents.expense_id = expenses.id')
+        })
       }
       if (bounds.start) expenseQuery.where('date', '>=', bounds.start)
       if (bounds.end) expenseQuery.where('date', '<=', bounds.end)
 
       const result = await expenseQuery
+        .preload('documents')
         .orderBy('date', 'desc')
         .orderBy('id', 'desc')
         .paginate(page, limit)
 
       paginatedExpenses = {
-        data: result.all().map((e) => ({
-          id: e.id,
-          projectId: e.projectId,
-          title: e.title,
-          vendor: e.vendor || '',
-          category: e.category,
-          amount: Number(e.amount),
-          date: e.date,
-          paymentMethod: e.paymentMethod || 'Cash',
-          status: e.status || 'Paid',
-          receiptUrl: e.receiptUrl || '',
-          receiptName: e.receiptName || '',
-          notes: e.notes || '',
-          hasReceipt: Boolean(e.receiptUrl || e.receiptName),
-        })),
+        data: result.all().map((e) => {
+          const docs = (e.documents || []).map((d) => ({
+            id: d.id,
+            url: d.filePath,
+            name: d.fileName,
+            type: d.fileType?.includes('pdf') || d.filePath.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
+            size: d.fileSize ? Number(d.fileSize) : null,
+            documentType: d.documentType || 'receipt',
+          }))
+
+          return {
+            id: e.id,
+            projectId: e.projectId,
+            title: e.title,
+            vendor: e.vendor || '',
+            category: e.category,
+            amount: Number(e.amount),
+            date: e.date,
+            paymentMethod: e.paymentMethod || 'Cash',
+            status: e.status || 'Paid',
+            receipts: docs,
+            receiptsCount: docs.length,
+            receiptUrl: docs[0]?.url || '',
+            receiptName: docs[0]?.name || '',
+            notes: e.notes || '',
+            hasReceipt: docs.length > 0,
+          }
+        }),
         meta: {
           total: result.total,
           perPage: result.perPage,
@@ -285,7 +329,7 @@ export default class ExpensesController {
   }
 
   /**
-   * Record a new expense in MySQL
+   * Record a new expense with attached documents in MySQL
    */
   async store({ auth, request, response }: HttpContext) {
     const user = auth.user!
@@ -303,24 +347,6 @@ export default class ExpensesController {
       'receiptName',
     ])
 
-    let receiptUrl = data.receiptUrl || null
-    let receiptName = data.receiptName || null
-
-    // Check for uploaded file
-    const receiptFile = request.file('receipt', {
-      size: '5mb',
-      extnames: ['jpg', 'png', 'jpeg', 'webp', 'pdf'],
-    })
-
-    if (receiptFile && receiptFile.isValid) {
-      const fileName = `${randomUUID()}.${receiptFile.extname}`
-      await receiptFile.move(app.makePath('public/uploads/receipts'), {
-        name: fileName,
-      })
-      receiptUrl = `/uploads/receipts/${fileName}`
-      receiptName = receiptFile.clientName
-    }
-
     const isStaff = user.role === 'superadmin' || user.role === 'admin'
     const projectQuery = Project.query().where('id', Number(data.projectId))
     if (!isStaff) {
@@ -329,6 +355,7 @@ export default class ExpensesController {
     const project = await projectQuery.firstOrFail()
     const ownerUserId = isStaff ? project.userId : user.id
 
+    // 1. Create Expense Record
     const newExpense = await Expense.create({
       userId: ownerUserId,
       projectId: Number(data.projectId),
@@ -339,16 +366,72 @@ export default class ExpensesController {
       date: data.date || new Date().toISOString().split('T')[0],
       paymentMethod: data.paymentMethod || 'Cash',
       status: data.status || 'Paid',
-      receiptUrl,
-      receiptName,
       notes: data.notes?.trim() || null,
     })
+
+    // 2. Process Multi-File Uploads and Save in expense_documents Table
+    const receiptFiles = request.files('receipts', {
+      size: '10mb',
+      extnames: ['jpg', 'png', 'jpeg', 'webp', 'pdf'],
+    })
+    const bracketFiles = request.files('receipts[]', {
+      size: '10mb',
+      extnames: ['jpg', 'png', 'jpeg', 'webp', 'pdf'],
+    })
+    const singleReceipt = request.file('receipt', {
+      size: '10mb',
+      extnames: ['jpg', 'png', 'jpeg', 'webp', 'pdf'],
+    })
+
+    const allFilesToProcess = [
+      ...(Array.isArray(receiptFiles) ? receiptFiles : []),
+      ...(Array.isArray(bracketFiles) ? bracketFiles : []),
+    ]
+    if (singleReceipt && singleReceipt.isValid) {
+      allFilesToProcess.push(singleReceipt)
+    }
+
+    for (const file of allFilesToProcess) {
+      if (file && file.isValid) {
+        const ext = (file.extname || 'jpg').toLowerCase()
+        const fileName = `${randomUUID()}.${ext}`
+        await file.move(app.makePath('public/uploads/receipts'), {
+          name: fileName,
+        })
+
+        await ExpenseDocument.create({
+          expenseId: newExpense.id,
+          projectId: newExpense.projectId,
+          userId: ownerUserId,
+          fileName: file.clientName,
+          filePath: `/uploads/receipts/${fileName}`,
+          fileType: ext === 'pdf' ? 'application/pdf' : `image/${ext}`,
+          fileSize: file.size,
+          documentType: 'receipt',
+        })
+      }
+    }
+
+    // Fallback for direct receiptUrl string if provided without file
+    if (allFilesToProcess.length === 0 && data.receiptUrl) {
+      const isPdf = data.receiptUrl.toLowerCase().endsWith('.pdf')
+      await ExpenseDocument.create({
+        expenseId: newExpense.id,
+        projectId: newExpense.projectId,
+        userId: ownerUserId,
+        fileName: data.receiptName || 'Receipt Document',
+        filePath: data.receiptUrl,
+        fileType: isPdf ? 'application/pdf' : 'image/jpeg',
+        fileSize: null,
+        documentType: 'receipt',
+      })
+    }
 
     return response.redirect().toPath(`/expenses?projectId=${newExpense.projectId}`)
   }
 
   /**
-   * Update an existing expense in MySQL
+   * Update an existing expense and its attached documents in MySQL
    */
   async update({ auth, params, request, response }: HttpContext) {
     const user = auth.user!
@@ -369,27 +452,9 @@ export default class ExpensesController {
       'paymentMethod',
       'status',
       'notes',
-      'receiptUrl',
-      'receiptName',
     ])
 
-    let receiptUrl = data.receiptUrl ?? expense.receiptUrl
-    let receiptName = data.receiptName ?? expense.receiptName
-
-    const receiptFile = request.file('receipt', {
-      size: '5mb',
-      extnames: ['jpg', 'png', 'jpeg', 'webp', 'pdf'],
-    })
-
-    if (receiptFile && receiptFile.isValid) {
-      const fileName = `${randomUUID()}.${receiptFile.extname}`
-      await receiptFile.move(app.makePath('public/uploads/receipts'), {
-        name: fileName,
-      })
-      receiptUrl = `/uploads/receipts/${fileName}`
-      receiptName = receiptFile.clientName
-    }
-
+    // Strictly update the existing expense record - NO new expense row is created
     expense.merge({
       title: data.title?.trim() || expense.title,
       vendor: data.vendor?.trim() ?? expense.vendor,
@@ -398,18 +463,126 @@ export default class ExpensesController {
       date: data.date || expense.date,
       paymentMethod: data.paymentMethod || expense.paymentMethod,
       status: data.status || expense.status,
-      receiptUrl,
-      receiptName,
       notes: data.notes?.trim() ?? expense.notes,
     })
 
     await expense.save()
 
+    // 1. Fetch current existing documents of this expense
+    const existingDocs = await ExpenseDocument.query()
+      .where('expenseId', expense.id)
+      .orderBy('id', 'asc')
+
+    // 2. Parse client-submitted kept existing receipts
+    const existingReceiptsRaw = request.input('existingReceipts')
+    let keptDocIds: number[] = []
+    let keptDocUrls: string[] = []
+
+    if (existingReceiptsRaw !== undefined && existingReceiptsRaw !== null) {
+      try {
+        const parsed = typeof existingReceiptsRaw === 'string' ? JSON.parse(existingReceiptsRaw) : existingReceiptsRaw
+        if (Array.isArray(parsed)) {
+          keptDocIds = parsed.map((d: any) => Number(d.id)).filter(Boolean)
+          keptDocUrls = parsed.map((d: any) => String(d.url || '').trim()).filter(Boolean)
+        }
+      } catch {}
+    } else {
+      // If client didn't send existingReceipts list, preserve existing docs by default
+      keptDocIds = existingDocs.map((d) => d.id)
+      keptDocUrls = existingDocs.map((d) => d.filePath)
+    }
+
+    // 3. Separate kept docs vs unkept (explicitly removed or replaced) docs
+    const unkeptDocs = existingDocs.filter(
+      (d) => !keptDocIds.includes(d.id) && !keptDocUrls.includes(d.filePath)
+    )
+
+    // Delete old physical files from server disk ONLY for unkept/removed docs
+    for (const oldDoc of unkeptDocs) {
+      deletePhysicalFile(oldDoc.filePath)
+    }
+
+    // 4. Collect newly uploaded files
+    const receiptFiles = request.files('receipts', {
+      size: '10mb',
+      extnames: ['jpg', 'png', 'jpeg', 'webp', 'pdf'],
+    })
+    const bracketFiles = request.files('receipts[]', {
+      size: '10mb',
+      extnames: ['jpg', 'png', 'jpeg', 'webp', 'pdf'],
+    })
+    const singleReceipt = request.file('receipt', {
+      size: '10mb',
+      extnames: ['jpg', 'png', 'jpeg', 'webp', 'pdf'],
+    })
+
+    const allFilesToProcess = [
+      ...(Array.isArray(receiptFiles) ? receiptFiles : []),
+      ...(Array.isArray(bracketFiles) ? bracketFiles : []),
+    ]
+    if (singleReceipt && singleReceipt.isValid) {
+      allFilesToProcess.push(singleReceipt)
+    }
+    const validNewFiles = allFilesToProcess.filter((f) => f && f.isValid)
+
+    if (validNewFiles.length > 0) {
+      let unkeptIdx = 0
+
+      for (let i = 0; i < validNewFiles.length; i++) {
+        const file = validNewFiles[i]
+        const ext = (file.extname || 'jpg').toLowerCase()
+        const fileName = `${randomUUID()}.${ext}`
+        await file.move(app.makePath('public/uploads/receipts'), {
+          name: fileName,
+        })
+
+        const filePath = `/uploads/receipts/${fileName}`
+        const fileType = ext === 'pdf' ? 'application/pdf' : `image/${ext}`
+        const fileSize = file.size
+
+        if (unkeptIdx < unkeptDocs.length) {
+          // Strictly UPDATE existing unkept record in place: NO new row created in MySQL!
+          unkeptDocs[unkeptIdx].merge({
+            fileName: file.clientName,
+            filePath,
+            fileType,
+            fileSize,
+            documentType: 'receipt',
+          })
+          await unkeptDocs[unkeptIdx].save()
+          unkeptIdx++
+        } else {
+          // If all unkept rows were recycled or none were unkept, insert new document row
+          await ExpenseDocument.create({
+            expenseId: expense.id,
+            projectId: expense.projectId,
+            userId: expense.userId,
+            fileName: file.clientName,
+            filePath,
+            fileType,
+            fileSize,
+            documentType: 'receipt',
+          })
+        }
+      }
+
+      // If more unkept docs than new files, delete remaining unkept rows from database
+      while (unkeptIdx < unkeptDocs.length) {
+        await unkeptDocs[unkeptIdx].delete()
+        unkeptIdx++
+      }
+    } else {
+      // No new files uploaded: delete all unkept docs from database
+      for (const oldDoc of unkeptDocs) {
+        await oldDoc.delete()
+      }
+    }
+
     return response.redirect().toPath(`/expenses?projectId=${expense.projectId}`)
   }
 
   /**
-   * Delete an expense from MySQL
+   * Delete an expense from MySQL (removes all physical files from disk & cascades DB)
    */
   async destroy({ auth, params, response }: HttpContext) {
     const user = auth.user!
@@ -421,6 +594,13 @@ export default class ExpensesController {
     }
     const expense = await expenseQuery.firstOrFail()
 
+    // 1. Delete all attached physical files from server disk
+    const docs = await ExpenseDocument.query().where('expenseId', expense.id)
+    for (const doc of docs) {
+      deletePhysicalFile(doc.filePath)
+    }
+
+    // 2. Delete expense (CASCADE handles DB records)
     const projectId = expense.projectId
     await expense.delete()
 
