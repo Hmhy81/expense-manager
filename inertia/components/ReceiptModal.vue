@@ -299,7 +299,14 @@ const downloadProof = () => {
 }
 
 const handlePrintVoucher = () => {
+  document.body.classList.add('print-mode-voucher')
+  const cleanup = () => {
+    document.body.classList.remove('print-mode-voucher')
+    window.removeEventListener('afterprint', cleanup)
+  }
+  window.addEventListener('afterprint', cleanup)
   window.print()
+  setTimeout(cleanup, 2500)
 }
 </script>
 

@@ -427,9 +427,12 @@ const printExpenseVoucher = (expense) => {
     notes: expense.notes,
   }
 
+  document.body.classList.add('print-mode-voucher')
+
   // Allow DOM to mount the hidden print component, then trigger native print
   setTimeout(() => {
     const cleanup = () => {
+      document.body.classList.remove('print-mode-voucher')
       voucherToPrint.value = null
       window.removeEventListener('afterprint', cleanup)
     }
@@ -441,9 +444,49 @@ const printExpenseVoucher = (expense) => {
   }, 100)
 }
 
+// Standalone Full Ledger Print State
+const isPrintingLedger = ref(false)
+const ledgerRowsToPrint = ref([])
+
 // Print full ledger
-const printFullLedger = () => {
-  window.print()
+const printFullLedger = async () => {
+  try {
+    isPrintingLedger.value = true
+    const allRows = await fetchAllFilteredExpensesForExport()
+    ledgerRowsToPrint.value = allRows && allRows.length > 0 ? allRows : (props.expenses?.data || [])
+
+    document.body.classList.add('print-mode-ledger')
+
+    setTimeout(() => {
+      const cleanup = () => {
+        document.body.classList.remove('print-mode-ledger')
+        ledgerRowsToPrint.value = []
+        isPrintingLedger.value = false
+        window.removeEventListener('afterprint', cleanup)
+      }
+      window.addEventListener('afterprint', cleanup)
+      window.print()
+
+      // Safety fallback cleanup
+      setTimeout(cleanup, 2500)
+    }, 150)
+  } catch (err) {
+    ledgerRowsToPrint.value = props.expenses?.data || []
+    document.body.classList.add('print-mode-ledger')
+    setTimeout(() => {
+      const cleanup = () => {
+        document.body.classList.remove('print-mode-ledger')
+        ledgerRowsToPrint.value = []
+        isPrintingLedger.value = false
+        window.removeEventListener('afterprint', cleanup)
+      }
+      window.addEventListener('afterprint', cleanup)
+      window.print()
+
+      // Safety fallback cleanup
+      setTimeout(cleanup, 2500)
+    }, 150)
+  }
 }
 
 // Export Complete PDF Statement handler
@@ -672,12 +715,14 @@ const getCategoryColor = (category) => {
 
         <button
           @click="printFullLedger"
+          :disabled="isPrintingLedger"
           type="button"
-          class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl shadow-2xs transition cursor-pointer"
+          class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 border border-slate-200/90 text-xs sm:text-sm font-semibold px-3 py-2 rounded-xl shadow-2xs transition cursor-pointer"
           title="Print complete ledger or save as PDF via browser"
         >
-          <Printer :size="14" class="text-indigo-600" />
-          <span class="hidden sm:inline">Print</span>
+          <Loader2 v-if="isPrintingLedger" :size="14" class="animate-spin text-indigo-600" />
+          <Printer v-else :size="14" class="text-indigo-600" />
+          <span class="hidden sm:inline">{{ isPrintingLedger ? 'Preparing...' : 'Print' }}</span>
         </button>
 
         <button
@@ -1098,5 +1143,181 @@ const getCategoryColor = (category) => {
 
     <!-- Standalone Printable Voucher (Direct row print without opening modal) -->
     <VoucherSlip v-if="voucherToPrint" :voucher="voucherToPrint" />
+
+    <!-- Standalone Printable Full Ledger (Direct top-bar print) -->
+    <div id="ledger-print-area" class="hidden">
+      <!-- Printable Header -->
+      <div class="border-b-2 border-slate-900 pb-4 mb-4 flex justify-between items-start">
+        <div>
+          <h1 class="text-2xl font-black tracking-tight text-slate-900 uppercase">
+            {{ effectiveSettings?.brandName || 'ExpensePro' }} &bull; {{ activeProject?.name || 'Expense Ledger' }}
+          </h1>
+          <p class="text-xs text-slate-600 mt-1 font-medium">
+            Official Itemized Expenditure Ledger &amp; Disbursement Report
+          </p>
+          <p class="text-[11px] text-slate-500 mt-0.5">
+            {{ activeProject?.type || 'Portfolio' }} &bull; {{ activeProject?.location || 'Pakistan' }}
+          </p>
+        </div>
+        <div class="text-right">
+          <p class="text-xs font-bold text-slate-900">
+            Statement Date: {{ new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) }}
+          </p>
+          <p class="text-xs text-slate-600 mt-0.5">
+            Period: {{ datePresets.find((p) => p.id === dateRangeOption)?.label || 'All Time' }}
+            <span v-if="dateRangeOption === 'custom' && (customStartDate || customEndDate)">
+              ({{ customStartDate || 'Start' }} to {{ customEndDate || 'Today' }})
+            </span>
+          </p>
+          <p class="text-[11px] text-slate-500 mt-0.5">
+            Total Records: {{ (ledgerRowsToPrint.length > 0 ? ledgerRowsToPrint : (props.expenses?.data || [])).length }}
+          </p>
+        </div>
+      </div>
+
+      <!-- Financial Metrics Summary Banner -->
+      <div class="grid grid-cols-4 gap-3 p-3 bg-slate-50 border border-slate-300 rounded-lg mb-4 text-xs">
+        <div>
+          <span class="text-[10px] font-bold text-slate-500 uppercase block">Total Filtered Outflow</span>
+          <span class="text-sm font-extrabold text-indigo-700">{{ formatCurrency(props.filterStats.filteredOutflow) }}</span>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-slate-500 uppercase block">Settled / Paid Out</span>
+          <span class="text-sm font-extrabold text-emerald-700">{{ formatCurrency(props.filterStats.totalPaid) }}</span>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-slate-500 uppercase block">Pending Balance Due</span>
+          <span class="text-sm font-extrabold text-amber-700">{{ formatCurrency(props.filterStats.totalPending) }}</span>
+        </div>
+        <div>
+          <span class="text-[10px] font-bold text-slate-500 uppercase block">Receipt Proofs</span>
+          <span class="text-sm font-extrabold text-slate-800">
+            {{ (ledgerRowsToPrint.length > 0 ? ledgerRowsToPrint : (props.expenses?.data || [])).filter(r => r.hasReceipt || r.receiptsCount > 0).length }} Verified Slips
+          </span>
+        </div>
+      </div>
+
+      <!-- Full Table for Printing -->
+      <table class="w-full text-xs border border-slate-300 border-collapse mb-5">
+        <thead>
+          <tr class="bg-slate-100 border-b border-slate-300 text-slate-800 font-bold">
+            <th class="py-2 px-2 text-center border-r border-slate-300 w-8">#</th>
+            <th class="py-2 px-2 text-left border-r border-slate-300 w-24">Date</th>
+            <th class="py-2 px-3 text-left border-r border-slate-300">Description / Title</th>
+            <th class="py-2 px-3 text-left border-r border-slate-300">Vendor / Payee</th>
+            <th class="py-2 px-2 text-left border-r border-slate-300">Category</th>
+            <th class="py-2 px-2 text-left border-r border-slate-300">Method</th>
+            <th class="py-2 px-2 text-center border-r border-slate-300 w-16">Status</th>
+            <th class="py-2 px-3 text-right">Amount ({{ effectiveSettings?.currencySymbol || 'PKR' }})</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="(row, idx) in (ledgerRowsToPrint.length > 0 ? ledgerRowsToPrint : (props.expenses?.data || []))"
+            :key="'print-' + row.id"
+            class="border-b border-slate-200"
+          >
+            <td class="py-1.5 px-2 text-center border-r border-slate-200 font-medium text-slate-500">{{ idx + 1 }}</td>
+            <td class="py-1.5 px-2 border-r border-slate-200 whitespace-nowrap text-slate-700">{{ row.date }}</td>
+            <td class="py-1.5 px-3 border-r border-slate-200 font-semibold text-slate-900">
+              {{ row.title }}
+              <span v-if="row.notes" class="block text-[10px] font-normal text-slate-500 italic">{{ row.notes }}</span>
+            </td>
+            <td class="py-1.5 px-3 border-r border-slate-200 text-slate-700">{{ row.vendor || 'Direct Purchase' }}</td>
+            <td class="py-1.5 px-2 border-r border-slate-200 text-slate-700">{{ row.category }}</td>
+            <td class="py-1.5 px-2 border-r border-slate-200 text-slate-700">{{ row.paymentMethod || 'Cash' }}</td>
+            <td class="py-1.5 px-2 border-r border-slate-200 text-center font-semibold" :class="row.status === 'Paid' ? 'text-emerald-700' : 'text-amber-700'">
+              {{ row.status }}
+            </td>
+            <td class="py-1.5 px-3 text-right font-bold text-slate-900 whitespace-nowrap">
+              {{ Number(row.amount || 0).toLocaleString() }}
+            </td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
+            <td colspan="7" class="py-2 px-3 text-right uppercase tracking-wider">
+              Total Filtered Outflow:
+            </td>
+            <td class="py-2 px-3 text-right font-black text-sm text-indigo-700">
+              {{ formatCurrency(props.filterStats.filteredOutflow) }}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- Official Signatures -->
+      <div class="grid grid-cols-3 gap-8 pt-6 mt-4 border-t border-slate-300 text-center text-xs text-slate-700">
+        <div>
+          <div class="border-b border-slate-400 mb-1.5 h-10"></div>
+          <p class="font-bold text-slate-900">Prepared By</p>
+          <p class="text-[10px] text-slate-500">Site Accountant / Cashier</p>
+        </div>
+        <div>
+          <div class="border-b border-slate-400 mb-1.5 h-10"></div>
+          <p class="font-bold text-slate-900">Verified &amp; Checked</p>
+          <p class="text-[10px] text-slate-500">Project Manager / Auditor</p>
+        </div>
+        <div>
+          <div class="border-b border-slate-400 mb-1.5 h-10"></div>
+          <p class="font-bold text-slate-900">Authorized Signature</p>
+          <p class="text-[10px] text-slate-500">Managing Director / Client</p>
+        </div>
+      </div>
+
+      <!-- Print Footer -->
+      <div class="mt-6 pt-3 border-t border-slate-200 text-center text-[10px] text-slate-400">
+        ExpensePro Digital Financial Ledger Statement &bull; Official System Record
+      </div>
+    </div>
   </AppLayout>
 </template>
+
+<style>
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  body.print-mode-ledger * {
+    visibility: hidden !important;
+  }
+
+  body.print-mode-ledger #ledger-print-area,
+  body.print-mode-ledger #ledger-print-area * {
+    visibility: visible !important;
+  }
+
+  body.print-mode-ledger #ledger-print-area {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 5mm !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    z-index: 99999999 !important;
+    box-sizing: border-box !important;
+  }
+
+  body.print-mode-ledger #ledger-print-area table {
+    page-break-inside: auto;
+  }
+
+  body.print-mode-ledger #ledger-print-area tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  body.print-mode-ledger #ledger-print-area thead {
+    display: table-header-group;
+  }
+
+  body.print-mode-ledger #ledger-print-area tfoot {
+    display: table-footer-group;
+  }
+}
+</style>

@@ -101,16 +101,16 @@ const { formatCurrency, effectiveSettings } = useSettings()
     margin: 15mm;
   }
 
-  body * {
+  body.print-mode-voucher * {
     visibility: hidden !important;
   }
 
-  #voucher-print-area,
-  #voucher-print-area * {
+  body.print-mode-voucher #voucher-print-area,
+  body.print-mode-voucher #voucher-print-area * {
     visibility: visible !important;
   }
 
-  #voucher-print-area {
+  body.print-mode-voucher #voucher-print-area {
     display: block !important;
     position: fixed !important;
     left: 0 !important;
