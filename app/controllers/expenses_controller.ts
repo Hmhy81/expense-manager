@@ -70,6 +70,7 @@ function applyDbFilters(
     search?: string
     category?: string
     receipt?: string
+    status?: string
     startDate?: string
     endDate?: string
   }
@@ -96,6 +97,14 @@ function applyDbFilters(
     query.whereNotExists((sub: any) => {
       sub.from('expense_documents').whereRaw('expense_documents.expense_id = expenses.id')
     })
+  }
+
+  if (filters.status && filters.status !== 'all') {
+    if (filters.status === 'Full Paid' || filters.status === 'Paid') {
+      query.whereIn('status', ['Paid', 'Full Paid'])
+    } else {
+      query.where('status', filters.status)
+    }
   }
 
   if (filters.startDate) {
@@ -132,6 +141,7 @@ export default class ExpensesController {
     const search = request.input('search', '')?.trim() || ''
     const category = request.input('category', 'All')?.trim() || 'All'
     const receipt = request.input('receipt', 'all')?.trim() || 'all'
+    const status = request.input('status', 'all')?.trim() || 'all'
     const dateRange = request.input('dateRange', 'all')?.trim() || 'all'
     const customStart = request.input('startDate', '')?.trim() || ''
     const customEnd = request.input('endDate', '')?.trim() || ''
@@ -143,6 +153,7 @@ export default class ExpensesController {
       search,
       category,
       receipt,
+      status,
       startDate: bounds.start,
       endDate: bounds.end,
     }
@@ -208,7 +219,7 @@ export default class ExpensesController {
       const statsRow = await statsQuery
         .select(
           db.raw('COALESCE(SUM(amount), 0) as total_amount'),
-          db.raw('COALESCE(SUM(CASE WHEN status = "Paid" THEN amount ELSE 0 END), 0) as paid_amount'),
+          db.raw('COALESCE(SUM(CASE WHEN status != "Pending" THEN amount ELSE 0 END), 0) as paid_amount'),
           db.raw('COALESCE(SUM(CASE WHEN status = "Pending" THEN amount ELSE 0 END), 0) as pending_amount'),
           db.raw('COUNT(*) as total_count')
         )
@@ -258,6 +269,14 @@ export default class ExpensesController {
       }
       if (bounds.start) expenseQuery.where('date', '>=', bounds.start)
       if (bounds.end) expenseQuery.where('date', '<=', bounds.end)
+
+      if (status && status !== 'all') {
+        if (status === 'Full Paid' || status === 'Paid') {
+          expenseQuery.whereIn('status', ['Paid', 'Full Paid'])
+        } else {
+          expenseQuery.where('status', status)
+        }
+      }
 
       const result = await expenseQuery
         .preload('documents')
@@ -319,6 +338,7 @@ export default class ExpensesController {
         search,
         category,
         receipt,
+        status,
         dateRange,
         startDate: customStart,
         endDate: customEnd,
@@ -365,7 +385,7 @@ export default class ExpensesController {
       amount: String(Number(data.amount || 0)),
       date: data.date || new Date().toISOString().split('T')[0],
       paymentMethod: data.paymentMethod || 'Cash',
-      status: data.status || 'Paid',
+      status: data.status || 'Full Paid',
       notes: data.notes?.trim() || null,
     })
 

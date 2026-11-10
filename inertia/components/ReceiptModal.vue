@@ -231,6 +231,7 @@ const getReceiptImageUrl = (item) => {
   const date = item?.date || '03 Nov 2026'
   const method = item?.paymentMethod || 'Cash Payment'
   const category = item?.category || 'Project Expense'
+  const statusLabel = (item?.status === 'Paid' ? 'Full Paid' : (item?.status || 'Full Paid')).toUpperCase()
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="750" viewBox="0 0 600 750" fill="none">
     <rect width="600" height="750" rx="16" fill="#F8FAFC"/>
@@ -251,14 +252,14 @@ const getReceiptImageUrl = (item) => {
     <text x="60" y="390" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#64748B">PAYMENT CHANNEL</text>
     <text x="60" y="415" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="600" fill="#1E293B">${method}</text>
     <text x="360" y="390" font-family="system-ui, -apple-system, sans-serif" font-size="12" fill="#64748B">PAYMENT STATUS</text>
-    <text x="360" y="415" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="bold" fill="#059669">PAID &amp; VERIFIED</text>
+    <text x="360" y="415" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="bold" fill="#059669">${statusLabel}</text>
     <line x1="60" y1="450" x2="540" y2="450" stroke="#CBD5E1" stroke-width="1.5" stroke-dasharray="6 6"/>
     <rect x="60" y="475" width="480" height="75" rx="10" fill="#EEF2FF"/>
     <text x="85" y="520" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="bold" fill="#312E81">TOTAL AMOUNT PAID</text>
     <text x="515" y="522" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="900" fill="${currentTheme.value.primary}" text-anchor="end">${formatCurrency(item?.amount)}</text>
     <g transform="translate(380, 565) rotate(-8)">
       <rect x="0" y="0" width="130" height="45" rx="6" fill="none" stroke="#059669" stroke-width="2.5" stroke-dasharray="5 3"/>
-      <text x="65" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="900" fill="#059669" text-anchor="middle">VERIFIED PAID</text>
+      <text x="65" y="28" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="900" fill="#059669" text-anchor="middle">${statusLabel}</text>
     </g>
     <rect x="60" y="630" width="4" height="35" fill="#334155"/>
     <rect x="68" y="630" width="8" height="35" fill="#334155"/>

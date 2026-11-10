@@ -46,7 +46,7 @@ const defaultForm = () => ({
   vendor: '',
   date: new Date().toISOString().split('T')[0],
   paymentMethod: 'Cash',
-  status: 'Paid',
+  status: 'Full Paid',
   notes: '',
 })
 
@@ -68,6 +68,9 @@ watch(
   () => props.expense,
   (newVal) => {
     if (newVal && props.mode === 'edit') {
+      let initialStatus = newVal.status || 'Full Paid'
+      if (initialStatus === 'Paid') initialStatus = 'Full Paid'
+
       form.value = {
         title: newVal.title || '',
         category: newVal.category || props.categories[0] || 'Raw Materials',
@@ -75,7 +78,7 @@ watch(
         vendor: newVal.vendor || '',
         date: newVal.date || new Date().toISOString().split('T')[0],
         paymentMethod: newVal.paymentMethod || 'Cash',
-        status: newVal.status || 'Paid',
+        status: initialStatus,
         notes: newVal.notes || '',
       }
 
@@ -293,10 +296,12 @@ const handleSubmit = () => {
           <label class="block text-xs font-semibold text-slate-700 mb-1">Status</label>
           <select
             v-model="form.status"
-            class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition"
+            class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition cursor-pointer"
           >
-            <option value="Paid">Fully Paid</option>
-            <option value="Pending">Pending / Advance Due</option>
+            <option value="Full Paid">Full Paid</option>
+            <option value="Partial Paid">Partial Paid</option>
+            <option value="Advance Paid">Advance Paid</option>
+            <option value="Pending">Pending</option>
           </select>
         </div>
       </div>

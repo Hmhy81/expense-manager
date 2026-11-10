@@ -33,6 +33,7 @@ const props = defineProps({
       search: '',
       category: 'All',
       receipt: 'all',
+      status: 'all',
       dateRange: 'all',
       startDate: '',
       endDate: '',
@@ -87,6 +88,7 @@ const categories = computed(() => ['All', ...activeCategories.value])
 const searchQuery = ref(props.filters?.search || '')
 const selectedCategory = ref(props.filters?.category || 'All')
 const filterWithReceipt = ref(props.filters?.receipt || 'all') // 'all', 'with_receipt', 'without_receipt'
+const selectedStatus = ref(props.filters?.status || 'all') // 'all', 'Full Paid', 'Partial Paid', 'Advance Paid', 'Pending'
 
 // Date Range Filtering State
 const dateRangeOption = ref(props.filters?.dateRange || 'all')
@@ -95,6 +97,11 @@ const customEndDate = ref(props.filters?.endDate || '')
 const selectedUserId = ref(props.filterUserId || '')
 
 const handleUserFilterChange = () => {
+  currentPage.value = 1
+  fetchFilteredExpenses(1)
+}
+
+const handleStatusFilterChange = () => {
   currentPage.value = 1
   fetchFilteredExpenses(1)
 }
@@ -174,6 +181,7 @@ watch(
       if (newFilters.search !== undefined) searchQuery.value = newFilters.search
       if (newFilters.category !== undefined) selectedCategory.value = newFilters.category
       if (newFilters.receipt !== undefined) filterWithReceipt.value = newFilters.receipt
+      if (newFilters.status !== undefined) selectedStatus.value = newFilters.status
       if (newFilters.dateRange !== undefined) dateRangeOption.value = newFilters.dateRange
       if (newFilters.startDate !== undefined) customStartDate.value = newFilters.startDate
       if (newFilters.endDate !== undefined) customEndDate.value = newFilters.endDate
@@ -223,6 +231,9 @@ const fetchFilteredExpenses = (page = 1) => {
   }
   if (filterWithReceipt.value && filterWithReceipt.value !== 'all') {
     queryParams.receipt = filterWithReceipt.value
+  }
+  if (selectedStatus.value && selectedStatus.value !== 'all') {
+    queryParams.status = selectedStatus.value
   }
   if (dateRangeOption.value && dateRangeOption.value !== 'all') {
     queryParams.dateRange = dateRangeOption.value
@@ -372,6 +383,7 @@ async function fetchAllFilteredExpensesForExport() {
   if (searchQuery.value?.trim()) params.append('search', searchQuery.value.trim())
   if (selectedCategory.value && selectedCategory.value !== 'All') params.append('category', selectedCategory.value)
   if (filterWithReceipt.value && filterWithReceipt.value !== 'all') params.append('receipt', filterWithReceipt.value)
+  if (selectedStatus.value && selectedStatus.value !== 'all') params.append('status', selectedStatus.value)
   if (dateRangeOption.value && dateRangeOption.value !== 'all') {
     params.append('dateRange', dateRangeOption.value)
     if (dateRangeOption.value === 'custom') {
@@ -581,7 +593,7 @@ const exportPDF = async () => {
       e.vendor || 'Direct Purchase',
       e.category || 'General',
       e.paymentMethod || 'Cash',
-      e.status || 'Paid',
+      formatStatusLabel(e.status),
       Number(e.amount || 0).toLocaleString(),
     ])
 
@@ -678,6 +690,30 @@ const getCategoryColor = (category) => {
   }
   const index = Math.abs(hash) % palette.length
   return palette[index]
+}
+
+// Helpers for Payment Status Badges & Labels
+const formatStatusLabel = (status) => {
+  if (status === 'Paid') return 'Full Paid'
+  return status || 'Full Paid'
+}
+
+const getStatusBadgeClass = (status) => {
+  const norm = formatStatusLabel(status)
+  if (norm === 'Full Paid') return 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+  if (norm === 'Partial Paid') return 'bg-blue-50 text-blue-700 border-blue-200/80'
+  if (norm === 'Advance Paid') return 'bg-purple-50 text-purple-700 border-purple-200/80'
+  if (norm === 'Pending') return 'bg-amber-50 text-amber-700 border-amber-200/80'
+  return 'bg-slate-50 text-slate-700 border-slate-200/80'
+}
+
+const getStatusDotClass = (status) => {
+  const norm = formatStatusLabel(status)
+  if (norm === 'Full Paid') return 'bg-emerald-500'
+  if (norm === 'Partial Paid') return 'bg-blue-500'
+  if (norm === 'Advance Paid') return 'bg-purple-500'
+  if (norm === 'Pending') return 'bg-amber-500 animate-pulse'
+  return 'bg-slate-400'
 }
 </script>
 
@@ -818,7 +854,20 @@ const getCategoryColor = (category) => {
           </div>
 
           <!-- Receipt & Status Filters -->
-          <div class="flex items-center gap-2 self-end md:self-auto">
+          <div class="flex items-center gap-2 self-end md:self-auto flex-wrap">
+            <!-- Status Filter Dropdown -->
+            <select
+              v-model="selectedStatus"
+              @change="handleStatusFilterChange"
+              class="px-2.5 sm:px-3 py-1.5 text-xs font-semibold bg-slate-50 hover:bg-white border border-slate-200/90 text-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer transition shadow-2xs"
+            >
+              <option value="all">All Statuses</option>
+              <option value="Full Paid">Full Paid</option>
+              <option value="Partial Paid">Partial Paid</option>
+              <option value="Advance Paid">Advance Paid</option>
+              <option value="Pending">Pending</option>
+            </select>
+
             <div class="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200/80 text-xs font-medium text-slate-600">
               <button
                 type="button"
@@ -1020,19 +1069,17 @@ const getCategoryColor = (category) => {
                 <td class="py-3.5 px-5 whitespace-nowrap">
                   <span
                     :class="[
-                      'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full',
-                      expense.status === 'Paid'
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-amber-50 text-amber-700 border border-amber-200/60',
+                      'inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full border',
+                      getStatusBadgeClass(expense.status),
                     ]"
                   >
                     <span
                       :class="[
                         'w-1.5 h-1.5 rounded-full',
-                        expense.status === 'Paid' ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse',
+                        getStatusDotClass(expense.status),
                       ]"
                     ></span>
-                    {{ expense.status }}
+                    {{ formatStatusLabel(expense.status) }}
                   </span>
                 </td>
 
@@ -1245,8 +1292,8 @@ const getCategoryColor = (category) => {
             <td class="py-1.5 px-3 border-r border-slate-200 text-slate-700">{{ row.vendor || 'Direct Purchase' }}</td>
             <td class="py-1.5 px-2 border-r border-slate-200 text-slate-700">{{ row.category }}</td>
             <td class="py-1.5 px-2 border-r border-slate-200 text-slate-700">{{ row.paymentMethod || 'Cash' }}</td>
-            <td class="py-1.5 px-2 border-r border-slate-200 text-center font-semibold" :class="row.status === 'Paid' ? 'text-emerald-700' : 'text-amber-700'">
-              {{ row.status }}
+            <td class="py-1.5 px-2 border-r border-slate-200 text-center font-semibold text-slate-800">
+              {{ formatStatusLabel(row.status) }}
             </td>
             <td class="py-1.5 px-3 text-right font-bold text-slate-900 whitespace-nowrap">
               {{ Number(row.amount || 0).toLocaleString() }}
