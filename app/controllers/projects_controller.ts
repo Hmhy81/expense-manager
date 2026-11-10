@@ -126,17 +126,18 @@ export default class ProjectsController {
   }
 
   /**
-   * Delete a project and cascade delete all its expenses
+   * Delete a project and cascade delete all its expenses (Strictly restricted to Admin/Superadmin)
    */
-  async destroy({ auth, params, response }: HttpContext) {
+  async destroy({ auth, params, response, session }: HttpContext) {
     const user = auth.user!
     const isStaff = user.role === 'superadmin' || user.role === 'admin'
 
-    const projectQuery = Project.query().where('id', params.id)
     if (!isStaff) {
-      projectQuery.where('userId', user.id)
+      session?.flash('error', 'Only administrators are authorized to delete projects.')
+      return response.status(403).redirect().toPath('/projects')
     }
-    const project = await projectQuery.firstOrFail()
+
+    const project = await Project.query().where('id', params.id).firstOrFail()
 
     // 1. Delete physical files from disk for all documents in this project
     const docs = await ExpenseDocument.query().where('projectId', project.id)

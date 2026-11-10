@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { Head, Link, router } from '@inertiajs/vue3'
+import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import AppLayout from '~/components/AppLayout.vue'
@@ -65,6 +65,20 @@ const {
 } = useActiveProject()
 const { formatCurrency, effectiveSettings } = useSettings()
 const toast = useToast()
+const page = usePage()
+
+// Strictly restrict delete permissions to Superadmin and Admin
+const canDelete = computed(() => {
+  return Boolean(
+    props.isSuperAdmin ||
+    props.isAdmin ||
+    page.props.user?.isSuperAdmin ||
+    page.props.user?.isAdmin ||
+    page.props.user?.isStaffOrAdmin ||
+    page.props.user?.role === 'superadmin' ||
+    page.props.user?.role === 'admin'
+  )
+})
 
 // Categories list with 'All' prepended
 const categories = computed(() => ['All', ...activeCategories.value])
@@ -314,6 +328,10 @@ const handleSaveExpense = (formData) => {
 
 // Delete actions using ConfirmModal
 const promptDeleteExpense = (item) => {
+  if (!canDelete.value) {
+    toast.error('Only administrators are authorized to delete payment records.')
+    return
+  }
   expenseToDelete.value = item
   isConfirmModalOpen.value = true
 }
@@ -1051,6 +1069,7 @@ const getCategoryColor = (category) => {
                       <Edit2 :size="14" />
                     </button>
                     <button
+                      v-if="canDelete"
                       type="button"
                       @click="promptDeleteExpense(expense)"
                       class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"

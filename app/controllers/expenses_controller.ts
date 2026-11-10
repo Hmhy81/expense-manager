@@ -582,17 +582,18 @@ export default class ExpensesController {
   }
 
   /**
-   * Delete an expense from MySQL (removes all physical files from disk & cascades DB)
+   * Delete an expense from MySQL (Strictly restricted to Admin/Superadmin)
    */
-  async destroy({ auth, params, response }: HttpContext) {
+  async destroy({ auth, params, response, session }: HttpContext) {
     const user = auth.user!
     const isStaff = user.role === 'superadmin' || user.role === 'admin'
 
-    const expenseQuery = Expense.query().where('id', params.id)
     if (!isStaff) {
-      expenseQuery.where('userId', user.id)
+      session?.flash('error', 'Only administrators are authorized to delete payment vouchers.')
+      return response.status(403).redirect().toPath('/expenses')
     }
-    const expense = await expenseQuery.firstOrFail()
+
+    const expense = await Expense.query().where('id', params.id).firstOrFail()
 
     // 1. Delete all attached physical files from server disk
     const docs = await ExpenseDocument.query().where('expenseId', expense.id)

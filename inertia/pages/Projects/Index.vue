@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { Head, router } from '@inertiajs/vue3'
+import { Head, router, usePage } from '@inertiajs/vue3'
 import AppLayout from '~/components/AppLayout.vue'
 import StatCard from '~/components/StatCard.vue'
 import ProjectModal from '~/components/ProjectModal.vue'
@@ -9,6 +9,7 @@ import EmptyState from '~/components/EmptyState.vue'
 import BudgetProgressBar from '~/components/BudgetProgressBar.vue'
 import { useActiveProject } from '~/composables/useActiveProject'
 import { useSettings } from '~/composables/useSettings'
+import { useToast } from '~/composables/useToast'
 import { FolderKanban, Plus, Search, Receipt, CheckCircle2, MapPin, TrendingUp, ArrowRight, Edit2, Trash2, Sparkles, Check, User } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -40,6 +41,21 @@ const {
   getProjectIcon,
 } = useActiveProject()
 const { formatCurrency } = useSettings()
+const page = usePage()
+const toast = useToast()
+
+// Strictly restrict delete permissions to Superadmin and Admin
+const canDelete = computed(() => {
+  return Boolean(
+    props.isSuperAdmin ||
+    props.isAdmin ||
+    page.props.user?.isSuperAdmin ||
+    page.props.user?.isAdmin ||
+    page.props.user?.isStaffOrAdmin ||
+    page.props.user?.role === 'superadmin' ||
+    page.props.user?.role === 'admin'
+  )
+})
 
 // Search & Filter state
 const searchQuery = ref('')
@@ -116,6 +132,10 @@ const handleSaveProject = (data) => {
 }
 
 const promptDeleteProject = (proj) => {
+  if (!canDelete.value) {
+    toast.error('Only administrators are authorized to delete projects.')
+    return
+  }
   projectToDelete.value = proj
   isConfirmModalOpen.value = true
 }
@@ -296,6 +316,7 @@ const openProjectLedger = (proj) => {
                   <Edit2 :size="14" />
                 </button>
                 <button
+                  v-if="canDelete"
                   type="button"
                   @click="promptDeleteProject(proj)"
                   class="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
