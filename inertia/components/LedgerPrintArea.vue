@@ -35,6 +35,10 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  projectStartDate: {
+    type: String,
+    default: '',
+  },
   statementDate: {
     type: String,
     default: '',
@@ -138,17 +142,34 @@ const formatStatusLabel = (status) => {
   if (status === 'Paid') return 'Full Paid'
   return status || 'Full Paid'
 }
+
+// KPI count and dynamic grid classes for cards where amount > 0
+const visibleKpisCount = computed(() => {
+  let count = 0
+  if (Number(props.stats?.filteredOutflow || 0) > 0) count++
+  if (Number(props.stats?.totalPaid || 0) > 0) count++
+  if (Number(props.stats?.totalPending || 0) > 0) count++
+  if (verifiedSlipsCount.value > 0) count++
+  return count
+})
+
+const kpiGridClass = computed(() => {
+  if (visibleKpisCount.value === 1) return 'grid-cols-1'
+  if (visibleKpisCount.value === 2) return 'grid-cols-2'
+  if (visibleKpisCount.value === 3) return 'grid-cols-3'
+  return 'grid-cols-4'
+})
 </script>
 
 <template>
   <div id="ledger-print-area" class="hidden">
     <!-- 1. OPTIONAL HEADER SECTION -->
     <div
-      v-if="showHeader && (brandName || title || subtitle || metaText || statementDate || filterText)"
-      class="border-b-2 border-slate-900 pb-4 mb-4 flex justify-between items-start"
+      v-if="showHeader && (brandName || title || subtitle || metaText || statementDate || filterText || projectStartDate)"
+      class="border-b-2 border-slate-900 pb-3 mb-3.5 flex justify-between items-stretch"
     >
-      <div>
-        <h1 v-if="brandName || title" class="text-2xl font-black tracking-tight text-slate-900 uppercase">
+      <div class="pr-4">
+        <h1 v-if="brandName || title" class="text-2xl font-black tracking-tight text-slate-900 uppercase leading-tight">
           <span v-if="brandName">{{ brandName }}</span>
           <span v-if="brandName && title"> &bull; </span>
           <span v-if="title">{{ title }}</span>
@@ -161,37 +182,37 @@ const formatStatusLabel = (status) => {
         </p>
       </div>
 
-      <div class="text-right">
-        <p v-if="statementDate" class="text-xs font-bold text-slate-900">
-          Statement Date: {{ statementDate }}
+      <div class="text-right shrink-0 flex flex-col justify-between py-0.5">
+        <p v-if="projectStartDate" class="text-xs font-bold text-slate-900 leading-tight">
+          Project Start Date: <span class="font-normal">{{ projectStartDate }}</span>
         </p>
-        <p v-if="filterText" class="text-xs text-slate-600 mt-0.5">
+        <p v-if="statementDate" class="text-xs font-bold text-slate-900 leading-tight">
+          Statement Date: <span class="font-normal">{{ statementDate }}</span>
+        </p>
+        <p v-if="filterText" class="text-xs text-slate-600 leading-tight">
           Period: {{ filterText }}
-        </p>
-        <p v-if="showRecordCount" class="text-[11px] text-slate-500 mt-0.5">
-          Total Records: {{ rows.length }}
         </p>
       </div>
     </div>
 
-    <!-- 2. OPTIONAL FINANCIAL METRICS SUMMARY BANNER -->
+    <!-- 2. OPTIONAL FINANCIAL METRICS SUMMARY BANNER (Shown only if amount > 0, Centered) -->
     <div
-      v-if="showKpiSummary && stats"
-      class="grid grid-cols-4 gap-3 p-3 bg-slate-50 border border-slate-300 rounded-lg mb-4 text-xs"
+      v-if="showKpiSummary && stats && visibleKpisCount > 0"
+      :class="['grid gap-3 p-3 bg-slate-50 border border-slate-300 rounded-lg mb-4 text-xs text-center', kpiGridClass]"
     >
-      <div v-if="stats.filteredOutflow !== undefined">
+      <div v-if="Number(stats.filteredOutflow || 0) > 0" class="flex flex-col items-center justify-center">
         <span class="text-[10px] font-bold text-slate-500 uppercase block">Total Filtered Outflow</span>
         <span class="text-sm font-extrabold text-indigo-700">{{ currencySymbol }} {{ formatAmount(stats.filteredOutflow) }}</span>
       </div>
-      <div v-if="stats.totalPaid !== undefined">
+      <div v-if="Number(stats.totalPaid || 0) > 0" class="flex flex-col items-center justify-center">
         <span class="text-[10px] font-bold text-slate-500 uppercase block">Settled / Paid Out</span>
         <span class="text-sm font-extrabold text-emerald-700">{{ currencySymbol }} {{ formatAmount(stats.totalPaid) }}</span>
       </div>
-      <div v-if="stats.totalPending !== undefined">
+      <div v-if="Number(stats.totalPending || 0) > 0" class="flex flex-col items-center justify-center">
         <span class="text-[10px] font-bold text-slate-500 uppercase block">Pending Balance Due</span>
         <span class="text-sm font-extrabold text-amber-700">{{ currencySymbol }} {{ formatAmount(stats.totalPending) }}</span>
       </div>
-      <div>
+      <div v-if="verifiedSlipsCount > 0" class="flex flex-col items-center justify-center">
         <span class="text-[10px] font-bold text-slate-500 uppercase block">Receipt Proofs</span>
         <span class="text-sm font-extrabold text-slate-800">{{ verifiedSlipsCount }} Verified Slips</span>
       </div>
@@ -236,10 +257,17 @@ const formatStatusLabel = (status) => {
       </tbody>
       <tfoot>
         <tr class="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
-          <td :colspan="footerColspan" class="py-2 px-3 text-right uppercase tracking-wider">
-            Total Statement Outflow:
+          <td :colspan="footerColspan" class="py-2.5 px-3">
+            <div class="flex items-center justify-between w-full">
+              <span v-if="showRecordCount" class="text-xs font-bold text-slate-700">
+                Total Records: <span class="text-slate-900 font-black">{{ rows.length }}</span>
+              </span>
+              <span class="uppercase tracking-wider ml-auto text-xs font-bold text-slate-800">
+                Total Statement Outflow:
+              </span>
+            </div>
           </td>
-          <td class="py-2 px-3 text-right font-black text-sm text-indigo-700">
+          <td class="py-2.5 px-3 text-right font-black text-sm text-indigo-700 whitespace-nowrap">
             {{ currencySymbol }} {{ formatAmount(computedTotalAmount) }}
           </td>
         </tr>

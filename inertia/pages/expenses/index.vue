@@ -188,6 +188,17 @@ const activeFilterText = computed(() => {
   return text
 })
 
+const formattedProjectStartDate = computed(() => {
+  if (!activeProject.value?.startDate) return ''
+  try {
+    const d = new Date(activeProject.value.startDate)
+    if (isNaN(d.getTime())) return activeProject.value.startDate
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  } catch {
+    return activeProject.value.startDate
+  }
+})
+
 // Sync when server props change (e.g. project switch or history navigation)
 watch(
   () => props.filters,
@@ -559,7 +570,8 @@ const exportPDF = async () => {
     doc.setFontSize(9.5)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(100, 116, 139)
-    doc.text(`Official Expense Ledger & Disbursement Statement | Generated: ${dateStr}`, 40, 58)
+    const startStr = formattedProjectStartDate.value ? ` | Project Started: ${formattedProjectStartDate.value}` : ''
+    doc.text(`Official Expense Ledger & Disbursement Statement${startStr} | Generated: ${dateStr}`, 40, 58)
 
     // Applied Filter Meta
     let filterText = `Filter: ${datePresets.find((p) => p.id === dateRangeOption.value)?.label || 'All Time'}`
@@ -1232,6 +1244,7 @@ const getStatusDotClass = (status) => {
       :title="activeProject?.name || 'Expense Ledger'"
       subtitle="Official Itemized Expenditure Ledger & Disbursement Report"
       :metaText="activeProject ? `${activeProject.type || 'Portfolio'} • ${activeProject.location || 'Pakistan'}` : ''"
+      :projectStartDate="formattedProjectStartDate"
       :statementDate="new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })"
       :filterText="activeFilterText"
       :stats="props.filterStats"
