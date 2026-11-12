@@ -30,11 +30,15 @@ export default class DashboardController {
     }
     let categoryDistribution: any[] = []
     let recentExpenses: any[] = []
+    let monthlyTrend: any[] = []
+    let paymentStatusStats: any[] = []
 
     if (activeProject) {
       activeStats = await ProjectService.getActiveProjectStats(activeProject.id)
       categoryDistribution = await ProjectService.getCategoryDistribution(activeProject.id)
       recentExpenses = await ProjectService.getRecentExpenses(activeProject.id, 5)
+      monthlyTrend = await ProjectService.getMonthlyExpenseTrend(activeProject.id)
+      paymentStatusStats = await ProjectService.getPaymentStatusBreakdown(activeProject.id)
     }
 
     return inertia.render('Dashboard', {
@@ -44,6 +48,8 @@ export default class DashboardController {
       activeStats,
       categoryDistribution,
       activeExpenses: recentExpenses,
+      monthlyTrend,
+      paymentStatusStats,
       globalSettings,
       projectSettingsMap,
       usersList,

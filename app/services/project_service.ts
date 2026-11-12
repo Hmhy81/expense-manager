@@ -257,4 +257,68 @@ export default class ProjectService {
       }
     })
   }
+
+  /**
+   * Get monthly expense trend (outflow aggregated per month)
+   */
+  static async getMonthlyExpenseTrend(projectId: number) {
+    const rows = await db
+      .from('expenses')
+      .where('project_id', projectId)
+      .select(
+        db.raw("SUBSTRING(date, 1, 7) as month_key"),
+        db.raw("COALESCE(SUM(amount), 0) as total_amount"),
+        db.raw("COUNT(*) as entry_count")
+      )
+      .groupBy('month_key')
+      .orderBy('month_key', 'asc')
+
+    return rows.map((r) => {
+      const parts = String(r.month_key || '').split('-')
+      let label = r.month_key
+      if (parts.length === 2) {
+        const year = parseInt(parts[0], 10)
+        const monthNum = parseInt(parts[1], 10)
+        if (!isNaN(year) && !isNaN(monthNum)) {
+          const dateObj = new Date(year, monthNum - 1, 1)
+          label = dateObj.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+        }
+      }
+      return {
+        key: r.month_key,
+        label,
+        amount: Number(r.total_amount || 0),
+        count: Number(r.entry_count || 0),
+      }
+    })
+  }
+
+  /**
+   * Get payment status aggregation breakdown (Full Paid, Partial Paid, Advance Paid, Pending)
+   */
+  static async getPaymentStatusBreakdown(projectId: number) {
+    const rows = await db
+      .from('expenses')
+      .where('project_id', projectId)
+      .select('status')
+      .sum('amount as total_amount')
+      .count('* as count')
+      .groupBy('status')
+
+    const statusOrder = ['Full Paid', 'Partial Paid', 'Advance Paid', 'Pending']
+
+    return rows.map((r) => {
+      let statusName = r.status || 'Full Paid'
+      if (statusName === 'Paid') statusName = 'Full Paid'
+      return {
+        status: statusName,
+        amount: Number(r.total_amount || 0),
+        count: Number(r.count || 0),
+      }
+    }).sort((a, b) => {
+      const idxA = statusOrder.indexOf(a.status)
+      const idxB = statusOrder.indexOf(b.status)
+      return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99)
+    })
+  }
 }

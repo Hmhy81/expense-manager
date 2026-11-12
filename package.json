@@ -76,6 +76,7 @@
     "@vinejs/vine": "^4.4.0",
     "@vue/server-renderer": "^3.5.43",
     "better-sqlite3": "^13.0.3",
+    "chart.js": "^4.6.1",
     "edge.js": "^6.5.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.9",

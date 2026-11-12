@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { Head, Link, router } from '@inertiajs/vue3'
 import AppLayout from '~/components/AppLayout.vue'
 import StatCard from '~/components/StatCard.vue'
+import DashboardCharts from '~/components/DashboardCharts.vue'
 import ExpenseModal from '~/components/ExpenseModal.vue'
 import ReceiptModal from '~/components/ReceiptModal.vue'
 import EmptyState from '~/components/EmptyState.vue'
@@ -19,6 +20,14 @@ const props = defineProps({
   filterUserId: {
     type: [Number, String],
     default: null,
+  },
+  monthlyTrend: {
+    type: Array,
+    default: () => [],
+  },
+  paymentStatusStats: {
+    type: Array,
+    default: () => [],
   },
   isSuperAdmin: {
     type: Boolean,
@@ -38,7 +47,7 @@ const {
   categoryDistribution,
   addExpense,
 } = useActiveProject()
-const { formatCurrency } = useSettings()
+const { formatCurrency, effectiveSettings } = useSettings()
 
 const selectedUserId = ref(props.filterUserId || '')
 
@@ -216,6 +225,14 @@ const handleSaveExpense = (newExpense) => {
           Set Budget &rarr;
         </Link>
       </div>
+
+      <!-- 3 Types of Visual Financial Charts (Area Trend, Category Donut, Status Bar) -->
+      <DashboardCharts
+        :monthlyTrend="props.monthlyTrend"
+        :categoryDistribution="categoryDistribution"
+        :paymentStatusStats="props.paymentStatusStats"
+        :currencySymbol="effectiveSettings?.currencySymbol || 'Rs.'"
+      />
 
       <!-- Category Allocation & Running Insights -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
