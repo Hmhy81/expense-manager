@@ -100,12 +100,20 @@ export default class ProjectService {
 
   /**
    * Get simple list of users (for Superadmin/Admin filtering)
+   * Shows only users with 'user' role so administrative accounts are not listed
    */
-  static async getUsersListForFilter() {
-    const users = await db
+  static async getUsersListForFilter(currentUser?: { role?: string }) {
+    const query = db
       .from('users')
       .select('id', 'full_name', 'email', 'role')
       .orderBy('full_name', 'asc')
+
+    // Only include users with 'user' role
+    if (!currentUser || currentUser.role === 'admin' || currentUser.role === 'superadmin') {
+      query.where('role', 'user')
+    }
+
+    const users = await query
 
     return users.map((u) => ({
       id: u.id,

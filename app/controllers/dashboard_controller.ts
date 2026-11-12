@@ -9,7 +9,7 @@ export default class DashboardController {
     const filterUserId = request.input('filterUserId') ? Number(request.input('filterUserId')) : null
 
     const projectsData = await ProjectService.getUserProjectsWithStats(user, filterUserId)
-    const usersList = isStaff ? await ProjectService.getUsersListForFilter() : []
+    const usersList = isStaff ? await ProjectService.getUsersListForFilter(user) : []
 
     let activeProjectId = request.input('projectId') ? Number(request.input('projectId')) : null
     if (!activeProjectId && projectsData.length > 0) {
